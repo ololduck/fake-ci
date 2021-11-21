@@ -1,0 +1,13 @@
+---
+pipeline:
+  - name: cargo check
+    steps:
+      - cargo check
+  - name: cargo test
+    steps:
+      - cargo test
+  - name: cargo build
+    steps:
+      - cargo build --release
+artifacts:
+  - target/release/fake-ci
