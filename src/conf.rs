@@ -19,6 +19,6 @@ pub(crate) struct FakeCIJob {
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct FakeCIStep {
-    pub(crate) name: String,
-    pub(crate) execute: Vec<String>
+    pub(crate) name: Option<String>,
+    pub(crate) exec: Vec<String>
 }

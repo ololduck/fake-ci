@@ -36,7 +36,7 @@ mod tests {
     #[test]
     fn test_dog_feeding() {
         pretty_env_logger::try_init();
-        let r = launch(".");
+        let _r = launch(".");
     }
 }
 
@@ -53,8 +53,10 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
     for job in conf.pipeline {
         for step in job.steps {
             let mut logs: Vec<String> = Vec::new();
-            for e in step.execute {
-                info!("Running step {}", step.name);
+            let mut step_counter = 0;
+            let s_name = step.name.unwrap_or(step_counter.to_string());
+            for e in step.exec {
+                info!("Running step {}", s_name);
                 let output = Command::new("bash").args(["-c", &e]).envs(&job.env.clone().unwrap_or_default()).output()?;
                 if output.stdout.len() > 0 {
                     let s = String::from_utf8_lossy(&output.stdout);
@@ -67,10 +69,11 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
                     logs.push(s.to_string());
                 }
                 if !output.status.success(){
-                    error!("Step {} returned execution failure! aborting next steps", step.name);
-                    logs.push(format!("Step {} returned execution failure! aborting next steps", step.name));
+                    error!("Step {} returned execution failure! aborting next steps", s_name);
+                    logs.push(format!("Step {} returned execution failure! aborting next steps", s_name));
                     break;
                 }
+                step_counter = step_counter + 1;
             }
             e.logs.push(logs);
         }
