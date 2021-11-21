@@ -17,7 +17,6 @@ path = "src/main.rs"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0"
 anyhow = "1"
-shlex = "1"
 log = "0"
 pretty_env_logger = "0"
 tempdir = "0"

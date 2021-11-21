@@ -36,14 +36,23 @@ mod tests {
     #[test]
     fn test_dog_feeding() {
         let _ = pretty_env_logger::try_init();
-        let _r = launch(".");
+        let r = launch(".");
+        assert!(r.is_ok());
+        let r = r.unwrap();
+        for job_result in r.job_results {
+            assert_eq!(job_result.success, true);
+        }
     }
 }
 
-type JobsLogs = Vec<String>;
+#[derive(Default, Serialize)]
+pub struct JobResult {
+    pub success: bool,
+    pub logs: Vec<String>
+}
 #[derive(Default, Serialize)]
 pub struct ExecutionResult {
-    pub logs: Vec<JobsLogs>,
+    pub job_results: Vec<JobResult>,
     pub artifacts: Vec<String>
 }
 
@@ -51,32 +60,42 @@ pub struct ExecutionResult {
 fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
     let mut e = ExecutionResult::default();
     for job in conf.pipeline {
+        info!("Running job \"{}\"", job.name);
+        let mut logs: Vec<String> = Vec::new();
+        let mut result = JobResult{
+            success: true,
+            ..Default::default()
+        };
         for step in job.steps {
-            let mut logs: Vec<String> = Vec::new();
             let mut step_counter = 0;
             let s_name = step.name.unwrap_or(step_counter.to_string());
+            info!(" Running step \"{}\"", s_name);
             for e in step.exec {
-                info!("Running step {}", s_name);
+                info!("  - {}", e);
                 let output = Command::new("bash").args(["-c", &e]).envs(&job.env.clone().unwrap_or_default()).output()?;
                 if output.stdout.len() > 0 {
                     let s = String::from_utf8_lossy(&output.stdout);
-                    debug!("stdout: {}", &s);
-                    logs.push(s.to_string());
+                    let _ = &s.lines().map(|l| debug!("    stdout: {}", l)).collect::<Vec<_>>();
+                    result.logs.push(s.to_string());
                 }
                 if output.stderr.len() > 0 {
                     let s = String::from_utf8_lossy(&output.stderr);
-                    debug!("stderr: {}", &s);
-                    logs.push(s.to_string());
+                    let _ = &s.lines().map(|l| debug!("    stderr: {}", l)).collect::<Vec<_>>();
+                    result.logs.push(s.to_string());
                 }
                 if !output.status.success(){
-                    error!("Step {} returned execution failure! aborting next steps", s_name);
-                    logs.push(format!("Step {} returned execution failure! aborting next steps", s_name));
+                    error!("Step \"{}\" returned execution failure! aborting next steps", s_name);
+                    logs.push(format!("Step \"{}\" returned execution failure! aborting next steps", s_name));
+                    result.success = false;
                     break;
                 }
                 step_counter = step_counter + 1;
             }
-            e.logs.push(logs);
+            if !result.success {
+                break;
+            }
         }
+        e.job_results.push(result);
     }
     Ok(e)
 }

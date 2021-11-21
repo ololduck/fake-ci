@@ -7,7 +7,7 @@ pipeline:
           - cargo check
       - name: test
         exec:
-          - cargo test
+          - cargo test --ignore test_dog_feeding
       - name: release
         exec:
           - cargo build --release
