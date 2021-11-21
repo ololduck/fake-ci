@@ -7,7 +7,7 @@ pipeline:
           - cargo check
       - name: test
         exec:
-          - cargo test --test test_hello_world
+          - cargo test test_hello_world
       - name: release
         exec:
           - cargo build --release
