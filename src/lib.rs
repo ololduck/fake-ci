@@ -1,21 +1,21 @@
+use crate::conf::FakeCIRepoConfig;
+use anyhow::Result;
+use log::{debug, error, info};
+use serde::Serialize;
 use std::env;
 use std::fs::File;
 use std::path::Path;
 use std::process::Command;
-use anyhow::Result;
-use log::{debug, error, info};
 use tempdir::TempDir;
-use crate::conf::FakeCIRepoConfig;
-use serde::Serialize;
 
-mod utils;
 mod conf;
+mod graph;
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{remove_file};
-    use std::path::Path;
     use crate::{execute_config, launch};
+    use std::fs::remove_file;
+    use std::path::Path;
 
     #[test]
     fn test_hello_world() {
@@ -48,21 +48,20 @@ mod tests {
 #[derive(Default, Serialize)]
 pub struct JobResult {
     pub success: bool,
-    pub logs: Vec<String>
+    pub logs: Vec<String>,
 }
 #[derive(Default, Serialize)]
 pub struct ExecutionResult {
     pub job_results: Vec<JobResult>,
-    pub artifacts: Vec<String>
+    pub artifacts: Vec<String>,
 }
-
 
 fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
     let mut e = ExecutionResult::default();
     for job in conf.pipeline {
         info!("Running job \"{}\"", job.name);
         let mut logs: Vec<String> = Vec::new();
-        let mut result = JobResult{
+        let mut result = JobResult {
             success: true,
             ..Default::default()
         };
@@ -72,20 +71,35 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
             info!(" Running step \"{}\"", s_name);
             for e in step.exec {
                 info!("  - {}", e);
-                let output = Command::new("bash").args(["-c", &e]).envs(&job.env.clone().unwrap_or_default()).output()?;
+                let output = Command::new("bash")
+                    .args(["-c", &e])
+                    .envs(&job.env.clone().unwrap_or_default())
+                    .output()?;
                 if output.stdout.len() > 0 {
                     let s = String::from_utf8_lossy(&output.stdout);
-                    let _ = &s.lines().map(|l| debug!("    stdout: {}", l)).collect::<Vec<_>>();
+                    let _ = &s
+                        .lines()
+                        .map(|l| debug!("    stdout: {}", l))
+                        .collect::<Vec<_>>();
                     result.logs.push(s.to_string());
                 }
                 if output.stderr.len() > 0 {
                     let s = String::from_utf8_lossy(&output.stderr);
-                    let _ = &s.lines().map(|l| debug!("    stderr: {}", l)).collect::<Vec<_>>();
+                    let _ = &s
+                        .lines()
+                        .map(|l| debug!("    stderr: {}", l))
+                        .collect::<Vec<_>>();
                     result.logs.push(s.to_string());
                 }
-                if !output.status.success(){
-                    error!("Step \"{}\" returned execution failure! aborting next steps", s_name);
-                    logs.push(format!("Step \"{}\" returned execution failure! aborting next steps", s_name));
+                if !output.status.success() {
+                    error!(
+                        "Step \"{}\" returned execution failure! aborting next steps",
+                        s_name
+                    );
+                    logs.push(format!(
+                        "Step \"{}\" returned execution failure! aborting next steps",
+                        s_name
+                    ));
                     result.success = false;
                     break;
                 }
@@ -101,7 +115,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
 }
 
 fn execute_from_file(path: &Path) -> Result<ExecutionResult> {
-    let c = match serde_yaml::from_reader(File::open(path)?){
+    let c = match serde_yaml::from_reader(File::open(path)?) {
         Ok(c) => c,
         Err(e) => {
             error!("Could not parse yaml config: {}", e);
@@ -114,7 +128,15 @@ fn execute_from_file(path: &Path) -> Result<ExecutionResult> {
 
 pub fn launch(repo_url: &str) -> Result<ExecutionResult> {
     let root = TempDir::new("fakeci_execution")?;
-    let output = Command::new("git").args(["clone", repo_url, root.path().to_str().expect("Could not convert from tmpdir to str")]).output()?;
+    let output = Command::new("git")
+        .args([
+            "clone",
+            repo_url,
+            root.path()
+                .to_str()
+                .expect("Could not convert from tmpdir to str"),
+        ])
+        .output()?;
     if !output.status.success() {
         error!("Could not clone repo!!!!!!!S");
         panic!();
@@ -122,6 +144,7 @@ pub fn launch(repo_url: &str) -> Result<ExecutionResult> {
     let old_path = env::current_dir()?;
     env::set_current_dir(root.path())?;
     let r = execute_from_file(Path::new(".fakeci.yml"))?;
+    //
     env::set_current_dir(old_path)?;
     Ok(r)
 }

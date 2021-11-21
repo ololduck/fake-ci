@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 pub(crate) struct FakeCIRepoConfig {
     pub(crate) pipeline: Vec<FakeCIJob>,
-    pub(crate) artefacts: Option<Vec<String>>
+    pub(crate) artefacts: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -15,9 +15,8 @@ pub(crate) struct FakeCIJob {
     pub(crate) env: Option<HashMap<String, String>>,
 }
 
-
 #[derive(Serialize, Deserialize)]
 pub(crate) struct FakeCIStep {
     pub(crate) name: Option<String>,
-    pub(crate) exec: Vec<String>
+    pub(crate) exec: Vec<String>,
 }
