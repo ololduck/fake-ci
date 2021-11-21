@@ -19,12 +19,12 @@ mod tests {
 
     #[test]
     fn test_hello_world() {
-        pretty_env_logger::try_init();
+        let _ = pretty_env_logger::try_init();
         let conf = "pipeline:
   - name: \"hello world\"
     steps:
       - name: \"Create File\"
-        execute:
+        exec:
           - \"touch /tmp/hello_world\"";
         let config = serde_yaml::from_str(conf).unwrap();
         assert!(execute_config(config).is_ok());
@@ -35,7 +35,7 @@ mod tests {
 
     #[test]
     fn test_dog_feeding() {
-        pretty_env_logger::try_init();
+        let _ = pretty_env_logger::try_init();
         let _r = launch(".");
     }
 }

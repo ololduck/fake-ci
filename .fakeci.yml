@@ -2,12 +2,15 @@
 pipeline:
   - name: cargo check
     steps:
-      - exec: cargo check
+      - exec:
+          - cargo check
   - name: cargo test
     steps:
-      - exec: cargo test
+      - exec:
+          - cargo test
   - name: cargo build
     steps:
-      - exec: cargo build --release
+      - exec:
+          - cargo build --release
 artifacts:
   - target/release/fake-ci
