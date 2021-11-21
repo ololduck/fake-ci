@@ -13,7 +13,6 @@ pub(crate) struct FakeCIJob {
     pub(crate) name: String,
     pub(crate) steps: Vec<FakeCIStep>,
     pub(crate) env: Option<HashMap<String, String>>,
-    pub(crate) depends_on: Option<Vec<Self>>
 }
 
 
