@@ -7,11 +7,11 @@ edition = "2021"
 
 [lib]
 name = "fakeci"
-path = "src/lib.rs"
+path = "src/lib/mod.rs"
 
 [[bin]]
 name = "fake-ci"
-path = "src/main.rs"
+path = "src/web/main.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
