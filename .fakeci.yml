@@ -1,4 +1,7 @@
 ---
+default:
+  image: rust
+
 pipeline:
   - name: check, test & release
     steps:

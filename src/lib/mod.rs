@@ -1,34 +1,44 @@
-use crate::conf::FakeCIRepoConfig;
-use anyhow::Result;
-use log::{debug, error, info};
-use serde::Serialize;
 use std::env;
 use std::fs::File;
 use std::path::Path;
 use std::process::Command;
+
+use anyhow::Result;
+use log::{debug, error, info};
+use serde::Serialize;
 use tempdir::TempDir;
 
-mod conf;
-mod graph;
+use crate::conf::FakeCIRepoConfig;
+use crate::utils::docker::run_in_container;
+
+pub mod conf;
+pub mod utils;
 
 #[cfg(test)]
 mod tests {
-    use crate::{execute_config, launch};
+    use log::debug;
+    use std::env::current_dir;
+    use std::fs;
+    use std::io;
     use std::fs::remove_file;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+
+    use crate::{execute_config, launch};
 
     #[test]
     fn test_hello_world() {
         let _ = pretty_env_logger::try_init();
         let conf = "pipeline:
   - name: \"hello world\"
+    image: busybox
     steps:
       - name: \"Create File\"
         exec:
-          - \"touch /tmp/hello_world\"";
+          - \"touch hello_world\"";
         let config = serde_yaml::from_str(conf).unwrap();
         assert!(execute_config(config).is_ok());
-        let p = Path::new("/tmp/hello_world");
+        let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        p.push("hello_world");
         assert!(p.is_file());
         remove_file(p).expect("Could not remove file in test_hello_world");
     }
@@ -50,6 +60,7 @@ pub struct JobResult {
     pub success: bool,
     pub logs: Vec<String>,
 }
+
 #[derive(Default, Serialize)]
 pub struct ExecutionResult {
     pub job_results: Vec<JobResult>,
@@ -65,16 +76,41 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
             success: true,
             ..Default::default()
         };
+        let image = match &job.image {
+            // then try to get the default one
+            None => {
+                match &conf.default {
+                    None => {
+                        // todo: cleanly return an error
+                        panic!("job.image was not set and no default values were found!");
+                    }
+                    Some(default) => match &default.image {
+                        None => {
+                            panic!("job.image was not set and no default values were found!");
+                        }
+                        Some(s) => s,
+                    },
+                }
+            }
+            Some(s) => s,
+        };
+        let mut volumes = Vec::new();
+        if let Some(vols) = job.volumes {
+            volumes.extend(vols);
+        }
         for step in job.steps {
             let mut step_counter = 0;
             let s_name = step.name.unwrap_or(step_counter.to_string());
             info!(" Running step \"{}\"", s_name);
             for e in step.exec {
                 info!("  - {}", e);
-                let output = Command::new("bash")
-                    .args(["-c", &e])
-                    .envs(&job.env.clone().unwrap_or_default())
-                    .output()?;
+                let output = run_in_container(
+                    image,
+                    &e,
+                    &volumes,
+                    &job.env.clone().unwrap_or_default(),
+                    true,
+                )?;
                 if output.stdout.len() > 0 {
                     let s = String::from_utf8_lossy(&output.stdout);
                     let _ = &s

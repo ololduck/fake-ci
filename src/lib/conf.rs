@@ -3,16 +3,24 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
+pub(crate) struct FakeCIDefaultConfig {
+    pub(crate) image: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
 pub(crate) struct FakeCIRepoConfig {
     pub(crate) pipeline: Vec<FakeCIJob>,
     pub(crate) artefacts: Option<Vec<String>>,
+    pub(crate) default: Option<FakeCIDefaultConfig>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct FakeCIJob {
     pub(crate) name: String,
+    pub(crate) image: Option<String>,
     pub(crate) steps: Vec<FakeCIStep>,
     pub(crate) env: Option<HashMap<String, String>>,
+    pub(crate) volumes: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize)]
