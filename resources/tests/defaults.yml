@@ -1,0 +1,20 @@
+---
+defaults:
+  image: busybox
+
+pipeline:
+  - name: job 0
+    steps:
+      - name: step 0.0
+        exec:
+          - step 0.0.0
+          - step 0.0.1
+      - name: step 0.1
+        exec:
+          - step 0.1.0
+  - name: job 1
+    image: ubuntu
+    steps:
+      - name: step 1.0
+        exec:
+          - step 1.0.0
