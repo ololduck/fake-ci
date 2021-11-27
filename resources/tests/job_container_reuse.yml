@@ -1,0 +1,13 @@
+---
+default:
+  image: busybox
+
+pipeline:
+  - name: container reuse
+    steps:
+      - name: create file
+        exec:
+          - echo "hi!" > /hi.txt
+      - name: check file presence
+        exec:
+          - cat /hi.txt

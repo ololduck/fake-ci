@@ -7,8 +7,7 @@ This is really the very beginning of this project, there's no http interface, no
 
 The only redeeming feature is it's ability to build & test itself, for now. That's why it's called FakeCI.
 
-```text
-test graph::tests::test_get_nexts ... ok
+```log
  INFO  fakeci > Running job "hello world"
  INFO  fakeci >  Running step "Create File"
  INFO  fakeci >   - touch /tmp/hello_world

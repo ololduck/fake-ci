@@ -20,3 +20,8 @@ anyhow = "1"
 log = "0"
 pretty_env_logger = "0"
 tempdir = "0"
+rand = "0"
+
+[dev-dependencies]
+pretty_assertions = "1"
+lazy_static = "1"
