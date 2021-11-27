@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::env::current_dir;
-use std::process::{Command, Output};
+use std::io::Write;
+use std::process::{Command, Output, Stdio};
 
 use anyhow::Result;
 use log::{debug, error};
@@ -11,14 +12,14 @@ use crate::utils::trim_newline;
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{File, remove_file};
-    use std::io::Write;
-    use tempdir::TempDir;
     use crate::build_image;
     use crate::conf::FakeCIDockerBuild;
     use crate::utils::docker::docker_remove_image;
-    use pretty_assertions::{assert_eq};
     use crate::utils::tests::with_dir;
+    use pretty_assertions::assert_eq;
+    use std::fs::{remove_file, File};
+    use std::io::Write;
+    use tempdir::TempDir;
 
     #[test]
     fn docker_build() {
@@ -32,7 +33,7 @@ mod tests {
                 context: None,
                 build_args: None,
                 name: Some("fakeci-build-image-test".to_string()),
-                privileged: false
+                privileged: false,
             };
             let image = build_image(&config).expect("Could not build image");
             assert_eq!(image, "fakeci-build-image-test");
@@ -42,7 +43,7 @@ mod tests {
     }
 }
 
-const DOCKER_NAME_CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz-_0123456789";
+pub(crate) const DOCKER_NAME_CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz-_0123456789";
 
 #[allow(dead_code)]
 pub(crate) fn get_pwd_from_image(image: &str) -> Result<String> {
@@ -59,53 +60,116 @@ pub(crate) fn get_pwd_from_image(image: &str) -> Result<String> {
     Ok(s)
 }
 
+pub(crate) fn cwd() -> Result<String> {
+    Ok(format!("{}", current_dir()?.display()))
+}
+
+fn docker_cmd(args: &[&str], current_dir: &str) -> Result<Output> {
+    debug!("Running in {}: docker {}", current_dir, args.join(" "));
+    Ok(Command::new("docker")
+        .args(args)
+        .current_dir(current_dir)
+        .output()?)
+}
+
 /// builds an image, returning the name of the newly built image
 pub fn build_image(config: &FakeCIDockerBuild) -> Result<String> {
     debug!("build image called with {:#?}", config);
-    let mut rng = rand::thread_rng();
-    let rand_name = format!(
-        "fakeci-{}",
-        (0..12)
-            .map(|_| {
-                let idx = rng.gen_range(0, DOCKER_NAME_CHARSET.len());
-                DOCKER_NAME_CHARSET[idx] as char
-            })
-            .collect::<String>()
-    );
+    let rand_name = rng_docker_chars(12);
     let name = &config.name.as_ref().unwrap_or(&rand_name);
     let default_context = ".".to_string();
     let args = &[
         "build",
         &format!(
             "--file={}",
-            &config.dockerfile.as_ref().unwrap_or(&"Dockerfile".to_string())
+            &config
+                .dockerfile
+                .as_ref()
+                .unwrap_or(&"Dockerfile".to_string())
         ),
         "-t",
         name,
-        &config.context.as_ref().unwrap_or(&default_context)
+        &config.context.as_ref().unwrap_or(&default_context),
     ];
-    debug!("Running docker {}", args.join(" "));
-    let output = Command::new("docker")
-        .args(args)
-        .current_dir(config.context.as_ref().unwrap_or(&".".to_string()))
-        .output()?;
+    let output = docker_cmd(args, config.context.as_ref().unwrap_or(&".".to_string()))?;
     if !output.status.success() {
-        error!("Error on docker build: {}", String::from_utf8_lossy(&output.stderr));
-        return Err(anyhow::Error::msg(format!("Could not build docker image {}", args[3])));
+        error!(
+            "Error on docker build: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return Err(anyhow::Error::msg(format!(
+            "Could not build docker image {}",
+            args[3]
+        )));
     }
 
     Ok(name.to_string())
 }
 
+pub(crate) fn rng_docker_chars(n: u8) -> String {
+    let mut rng = rand::thread_rng();
+    let rand_name = format!(
+        "fakeci-{}",
+        (0..n)
+            .map(|_| {
+                let idx = rng.gen_range(0, DOCKER_NAME_CHARSET.len());
+                DOCKER_NAME_CHARSET[idx] as char
+            })
+            .collect::<String>()
+    );
+    rand_name
+}
+
 /// Removes the given image
 pub fn docker_remove_image(image: &str) -> Result<()> {
     let args = &["rmi", image];
-    debug!("Running docker {}", args.join(" "));
-    let output = Command::new("docker").args(args).output()?;
+    let output = docker_cmd(args, &cwd()?)?;
     if !output.status.success() {
         return Err(anyhow::Error::msg("Could not remove docker image"));
     }
     Ok(())
+}
+
+pub fn docker_remove_container(container: &str) -> Result<()> {
+    let args = &["rm", container];
+    debug!("Running docker {}", args.join(" "));
+    let output = docker_cmd(args, &cwd()?)?;
+    if !output.status.success() {
+        return Err(anyhow::Error::msg(format!(
+            "Could not remove docker container {}",
+            container
+        )));
+    }
+    Ok(())
+}
+
+/// Runs the given command in the given container, then returns the output.
+/// ```
+/// # use std::collections::HashMap;
+/// use fakeci::utils::docker::{docker_remove_container, run_from_image, run_in_container};
+/// let image = "ubuntu";
+/// let cname = "fakeci-container-reuse-doctest";
+/// let commands = vec!["ls", "echo hello world", "touch hello.txt"];
+/// let _ = run_from_image(image, cname, "bash", &[], &HashMap::default(), false, false);
+/// for cmd in commands {
+///     let o = run_in_container(cname, cmd);
+///     assert!(o.is_ok());
+///     let status = o.unwrap().status;
+///     assert!(status.success());
+/// }
+/// let _ = docker_remove_container(cname)?;
+/// ```
+pub fn run_in_container(container: &str, command: &str) -> Result<Output> {
+    let args = &["start", "-ai", container];
+    let mut process = Command::new("docker")
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let c_stdin = process.stdin.as_mut().unwrap();
+    c_stdin.write_all(command.as_bytes())?;
+    Ok(process.wait_with_output()?)
 }
 
 /// Runs the given `command` in a container created from `image`.
@@ -115,17 +179,18 @@ pub fn docker_remove_image(image: &str) -> Result<()> {
 /// # use fakeci::utils::docker::run_from_image;
 /// # let _ = pretty_env_logger::try_init();
 /// # use pretty_assertions::assert_eq;
-/// let o: Output = run_from_image("busybox", "echo hi", &[], &HashMap::default(), true, false).expect("could not run docker :'(");
-/// assert_eq!(o.status.success(), true);
-/// assert_eq!(String::from_utf8_lossy(&o.stdout), "hi\n");
+/// let output = run_from_image("busybox", "fake-ci-doctest","echo hi", &[], &HashMap::default(), true, false).expect("could not run docker :'(");
+/// assert_eq!(output.status.success(), true);
+/// assert_eq!(String::from_utf8_lossy(&output.stdout), "hi\n");
 /// ```
 pub fn run_from_image(
     image: &str,
+    container_name: &str,
     command: &str,
     volumes: &[String],
     env: &HashMap<String, String>,
     one_time: bool,
-    privileged: bool
+    privileged: bool,
 ) -> Result<Output> {
     let mut vols = vec![format!(
         "--volume={}:{}",
@@ -142,6 +207,7 @@ pub fn run_from_image(
     );
     // yeah, we can't have a &String if the object is freed...
     let s_run = String::from("run");
+    let cname = format!("--name={}", container_name);
     let args = {
         let mut args: Vec<&str> = Vec::new();
         args.push(&s_run);
@@ -151,6 +217,7 @@ pub fn run_from_image(
         if privileged {
             args.push("--privileged");
         }
+        args.push(&cname);
         args.push("--workdir=/code");
         args.extend(vols.iter().map(|v| v.as_str()));
         args.push(image);

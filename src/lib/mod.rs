@@ -17,12 +17,12 @@ pub mod utils;
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
     use std::fs::remove_file;
     use std::path::PathBuf;
-    use pretty_assertions::{assert_eq};
 
-    use crate::{execute_config, launch};
     use crate::utils::tests::with_dir;
+    use crate::{execute_config, launch};
 
     #[test]
     fn hello_world() {
@@ -81,22 +81,17 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
         let image = get_job_image_or_default(&job, &conf)?;
         let image_str = match image {
             IMAGE::Existing(s) => s.clone(),
-            IMAGE::Build(i) =>  build_image(i)?,
-            IMAGE::ExistingFull(e) => e.name.clone()
+            IMAGE::Build(i) => build_image(i)?,
+            IMAGE::ExistingFull(e) => e.name.clone(),
         };
-        // TODO: reuse container
-        // from https://forums.docker.com/t/run-command-in-stopped-container/343/16
-        // docker run -it --name mycont ubuntu bash
-        // touch /tmp/file1
-        // exit
-        // docker start -ai mycont
-        // touch /tmp/file2
-        // exit
-        // ad infinitum
 
         let mut volumes = Vec::new();
         if let Some(vols) = job.volumes.as_ref() {
-            volumes.extend(vols.iter().map(|s| String::from(s)).collect::<Vec<String>>());
+            volumes.extend(
+                vols.iter()
+                    .map(|s| String::from(s))
+                    .collect::<Vec<String>>(),
+            );
         }
         for step in &job.steps {
             let mut step_counter = 0;
@@ -107,11 +102,12 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
                 info!("  - {}", e);
                 let output = run_from_image(
                     &image_str,
+                    &job.generate_container_name(),
                     &e,
                     &volumes,
                     &job.env.clone().unwrap_or_default(),
                     true,
-                    image.is_privileged()
+                    image.is_privileged(),
                 )?;
                 if output.stdout.len() > 0 {
                     let s = String::from_utf8_lossy(&output.stdout);

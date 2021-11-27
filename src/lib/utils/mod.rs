@@ -6,14 +6,13 @@ pub mod docker;
 
 #[cfg(test)]
 pub mod tests {
+    use crate::FakeCIRepoConfig;
+    use anyhow::Result;
+    use log::debug;
     use std::env::{current_dir, set_current_dir};
     use std::fs::File;
     use std::io::Read;
     use std::path::{Path, PathBuf};
-    use crate::FakeCIRepoConfig;
-    use anyhow::Result;
-    use log::debug;
-
 
     pub fn serialize(conf: &FakeCIRepoConfig) -> Result<String> {
         Ok(serde_yaml::to_string(conf)?)
@@ -30,13 +29,18 @@ pub mod tests {
         Ok(s)
     }
 
-    pub fn with_dir<F>(path: &Path, f:F) where F: FnOnce() {
+    pub fn with_dir<F>(path: &Path, f: F)
+    where
+        F: FnOnce(),
+    {
         use lazy_static::lazy_static;
         use std::sync::Mutex;
-        lazy_static!{
+        lazy_static! {
             static ref WITH_DIR_MUTEX: Mutex<u8> = Mutex::new(0u8);
         }
-        let _lock = WITH_DIR_MUTEX.lock().expect("Could not aquire lock in with_dir");
+        let _lock = WITH_DIR_MUTEX
+            .lock()
+            .expect("Could not aquire lock in with_dir");
         let old_path = current_dir().expect("could not get current dir");
         debug!("path: {}", old_path.display());
         if path != old_path {
@@ -50,7 +54,6 @@ pub mod tests {
         }
     }
 }
-
 
 #[allow(dead_code)]
 /// Trims newlines (\r & \n) from the given string
@@ -69,13 +72,15 @@ pub fn trim_newline(s: &mut String) {
     }
 }
 
-pub fn get_job_image_or_default<'a>(job: &'a FakeCIJob, config: &'a FakeCIRepoConfig) -> Result<&'a IMAGE> {
+pub fn get_job_image_or_default<'a>(
+    job: &'a FakeCIJob,
+    config: &'a FakeCIRepoConfig,
+) -> Result<&'a IMAGE> {
     for j in &config.pipeline {
         if j == job {
             if j.image.is_some() {
                 return Ok(j.image.as_ref().unwrap());
-            }
-            else if config.default.is_some() {
+            } else if config.default.is_some() {
                 if config.default.as_ref().unwrap().image.is_some() {
                     return Ok(config.default.as_ref().unwrap().image.as_ref().unwrap());
                 }

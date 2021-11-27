@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::utils::docker::{rng_docker_chars, DOCKER_NAME_CHARSET};
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
@@ -56,7 +57,6 @@ pub struct FakeCIRepoConfig {
     pub default: Option<FakeCIDefaultConfig>,
 }
 
-
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct FakeCIDockerBuild {
     pub dockerfile: Option<String>,
@@ -64,14 +64,14 @@ pub struct FakeCIDockerBuild {
     pub build_args: Option<String>,
     pub name: Option<String>,
     #[serde(default)]
-    pub privileged: bool
+    pub privileged: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct FakeCIDockerImage {
     pub name: String,
     #[serde(default)]
-    pub privileged: bool
+    pub privileged: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -91,6 +91,24 @@ pub struct FakeCIJob {
     pub volumes: Option<Vec<String>>,
 }
 
+impl FakeCIJob {
+    pub fn generate_container_name(&self) -> String {
+        let valid_bytes = self
+            .name
+            .to_lowercase()
+            .as_bytes()
+            .iter()
+            .map(|b| match b {
+                b' ' => b'-',
+                _ => *b,
+            })
+            .filter(|b| DOCKER_NAME_CHARSET.contains(b))
+            .collect::<Vec<u8>>();
+        let name = String::from_utf8_lossy(&valid_bytes);
+        format!("fake-ci-{}-{}", name, rng_docker_chars(4))
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct FakeCIStep {
     pub name: Option<String>,
@@ -102,14 +120,14 @@ impl IMAGE {
         match self {
             IMAGE::Existing(_) => false,
             IMAGE::ExistingFull(e) => e.privileged,
-            IMAGE::Build(b) => b.privileged
+            IMAGE::Build(b) => b.privileged,
         }
     }
     pub fn get_name(&self) -> Option<String> {
-        match self{
+        match self {
             IMAGE::Existing(s) => Some(s.clone()),
             IMAGE::ExistingFull(e) => Some(e.name.clone()),
-            IMAGE::Build(b) => b.name.clone()
+            IMAGE::Build(b) => b.name.clone(),
         }
     }
 }
