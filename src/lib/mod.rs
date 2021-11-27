@@ -8,25 +8,24 @@ use log::{debug, error, info};
 use serde::Serialize;
 use tempdir::TempDir;
 
-use crate::conf::FakeCIRepoConfig;
-use crate::utils::docker::run_in_container;
+use crate::conf::{FakeCIRepoConfig, IMAGE};
+use crate::utils::docker::{build_image, run_from_image};
+use crate::utils::get_job_image_or_default;
 
 pub mod conf;
 pub mod utils;
 
 #[cfg(test)]
 mod tests {
-    use log::debug;
-    use std::env::current_dir;
-    use std::fs;
-    use std::io;
     use std::fs::remove_file;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
+    use pretty_assertions::{assert_eq};
 
     use crate::{execute_config, launch};
+    use crate::utils::tests::with_dir;
 
     #[test]
-    fn test_hello_world() {
+    fn hello_world() {
         let _ = pretty_env_logger::try_init();
         let conf = "pipeline:
   - name: \"hello world\"
@@ -36,15 +35,18 @@ mod tests {
         exec:
           - \"touch hello_world\"";
         let config = serde_yaml::from_str(conf).unwrap();
-        assert!(execute_config(config).is_ok());
-        let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        p.push("hello_world");
-        assert!(p.is_file());
-        remove_file(p).expect("Could not remove file in test_hello_world");
+        let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        with_dir(&p, || {
+            assert!(execute_config(config).is_ok());
+            let hello = p.join("hello_world");
+            assert!(hello.is_file());
+            remove_file(hello).expect("Could not remove file in test_hello_world");
+        });
     }
 
     #[test]
-    fn test_dog_feeding() {
+    #[ignore]
+    fn dog_feeding() {
         let _ = pretty_env_logger::try_init();
         let r = launch(".");
         assert!(r.is_ok());
@@ -69,47 +71,47 @@ pub struct ExecutionResult {
 
 fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
     let mut e = ExecutionResult::default();
-    for job in conf.pipeline {
+    for job in &conf.pipeline {
         info!("Running job \"{}\"", job.name);
         let mut logs: Vec<String> = Vec::new();
         let mut result = JobResult {
             success: true,
             ..Default::default()
         };
-        let image = match &job.image {
-            // then try to get the default one
-            None => {
-                match &conf.default {
-                    None => {
-                        // todo: cleanly return an error
-                        panic!("job.image was not set and no default values were found!");
-                    }
-                    Some(default) => match &default.image {
-                        None => {
-                            panic!("job.image was not set and no default values were found!");
-                        }
-                        Some(s) => s,
-                    },
-                }
-            }
-            Some(s) => s,
+        let image = get_job_image_or_default(&job, &conf)?;
+        let image_str = match image {
+            IMAGE::Existing(s) => s.clone(),
+            IMAGE::Build(i) =>  build_image(i)?,
+            IMAGE::ExistingFull(e) => e.name.clone()
         };
+        // TODO: reuse container
+        // from https://forums.docker.com/t/run-command-in-stopped-container/343/16
+        // docker run -it --name mycont ubuntu bash
+        // touch /tmp/file1
+        // exit
+        // docker start -ai mycont
+        // touch /tmp/file2
+        // exit
+        // ad infinitum
+
         let mut volumes = Vec::new();
-        if let Some(vols) = job.volumes {
-            volumes.extend(vols);
+        if let Some(vols) = job.volumes.as_ref() {
+            volumes.extend(vols.iter().map(|s| String::from(s)).collect::<Vec<String>>());
         }
-        for step in job.steps {
+        for step in &job.steps {
             let mut step_counter = 0;
-            let s_name = step.name.unwrap_or(step_counter.to_string());
+            let step_counter_as_str = step_counter.to_string();
+            let s_name = step.name.as_ref().unwrap_or(&step_counter_as_str);
             info!(" Running step \"{}\"", s_name);
-            for e in step.exec {
+            for e in &step.exec {
                 info!("  - {}", e);
-                let output = run_in_container(
-                    image,
+                let output = run_from_image(
+                    &image_str,
                     &e,
                     &volumes,
                     &job.env.clone().unwrap_or_default(),
                     true,
+                    image.is_privileged()
                 )?;
                 if output.stdout.len() > 0 {
                     let s = String::from_utf8_lossy(&output.stdout);
@@ -151,6 +153,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
 }
 
 fn execute_from_file(path: &Path) -> Result<ExecutionResult> {
+    debug!("Execute from file {}", path.display());
     let c = match serde_yaml::from_reader(File::open(path)?) {
         Ok(c) => c,
         Err(e) => {
@@ -163,7 +166,9 @@ fn execute_from_file(path: &Path) -> Result<ExecutionResult> {
 }
 
 pub fn launch(repo_url: &str) -> Result<ExecutionResult> {
+    debug!("launch called with repo {}", repo_url);
     let root = TempDir::new("fakeci_execution")?;
+    debug!("running in dir {}", root.path().display());
     let output = Command::new("git")
         .args([
             "clone",
