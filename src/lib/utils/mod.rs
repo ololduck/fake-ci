@@ -1,6 +1,7 @@
 use crate::conf::FakeCIJob;
 use crate::{FakeCIRepoConfig, IMAGE};
 use anyhow::{Error, Result};
+use log::debug;
 
 pub mod docker;
 
@@ -8,11 +9,16 @@ pub mod docker;
 pub mod tests {
     use crate::FakeCIRepoConfig;
     use anyhow::Result;
+    use lazy_static::lazy_static;
     use log::debug;
     use std::env::{current_dir, set_current_dir};
     use std::fs::File;
     use std::io::Read;
     use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex};
+    lazy_static! {
+        static ref WITH_DIR_MUTEX: Arc<Mutex<u8>> = Arc::new(Mutex::new(0u8));
+    }
 
     pub fn serialize(conf: &FakeCIRepoConfig) -> Result<String> {
         Ok(serde_yaml::to_string(conf)?)
@@ -33,14 +39,8 @@ pub mod tests {
     where
         F: FnOnce(),
     {
-        use lazy_static::lazy_static;
-        use std::sync::Mutex;
-        lazy_static! {
-            static ref WITH_DIR_MUTEX: Mutex<u8> = Mutex::new(0u8);
-        }
-        let _lock = WITH_DIR_MUTEX
-            .lock()
-            .expect("Could not aquire lock in with_dir");
+        let arc = Arc::clone(&WITH_DIR_MUTEX);
+        let _lock = arc.lock().expect("could not aquire lock");
         let old_path = current_dir().expect("could not get current dir");
         debug!("path: {}", old_path.display());
         if path != old_path {
@@ -79,6 +79,7 @@ pub fn get_job_image_or_default<'a>(
     for j in &config.pipeline {
         if j == job {
             if j.image.is_some() {
+                debug!("found configured job image: {:?}", j.image);
                 return Ok(j.image.as_ref().unwrap());
             } else if config.default.is_some() {
                 if config.default.as_ref().unwrap().image.is_some() {

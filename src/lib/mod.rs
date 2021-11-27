@@ -9,7 +9,9 @@ use serde::Serialize;
 use tempdir::TempDir;
 
 use crate::conf::{FakeCIRepoConfig, IMAGE};
-use crate::utils::docker::{build_image, run_from_image};
+use crate::utils::docker::{
+    build_image, docker_remove_container, run_from_image, run_in_container,
+};
 use crate::utils::get_job_image_or_default;
 
 pub mod conf;
@@ -21,7 +23,7 @@ mod tests {
     use std::fs::remove_file;
     use std::path::PathBuf;
 
-    use crate::utils::tests::with_dir;
+    use crate::utils::tests::{deserialize, get_sample_resource_file, with_dir};
     use crate::{execute_config, launch};
 
     #[test]
@@ -42,6 +44,23 @@ mod tests {
             assert!(hello.is_file());
             remove_file(hello).expect("Could not remove file in test_hello_world");
         });
+    }
+
+    #[test]
+    fn multiple_steps() -> anyhow::Result<()> {
+        let _ = pretty_env_logger::try_init();
+        let conf = deserialize(&get_sample_resource_file("job_container_reuse.yml")?)?;
+        let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        with_dir(&p, || {
+            let result = execute_config(conf);
+            assert!(result.is_ok());
+            let result = result.unwrap();
+            for j in result.job_results {
+                assert!(j.success);
+                assert!(j.logs.contains(&"hi!\n".to_string()));
+            }
+        });
+        Ok(())
     }
 
     #[test]
@@ -78,7 +97,13 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
             success: true,
             ..Default::default()
         };
-        let image = get_job_image_or_default(&job, &conf)?;
+        let image = match get_job_image_or_default(&job, &conf) {
+            Ok(i) => i,
+            Err(e) => {
+                error!("Could not find image definition anywhere!: {}", e);
+                return Err(e);
+            }
+        };
         let image_str = match image {
             IMAGE::Existing(s) => s.clone(),
             IMAGE::Build(i) => build_image(i)?,
@@ -93,6 +118,29 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
                     .collect::<Vec<String>>(),
             );
         }
+        // first, create the container
+        let cname = job.generate_container_name();
+        let output = run_from_image(
+            &image_str,
+            &cname,
+            "sh",
+            &volumes,
+            &job.env.clone().unwrap_or_default(),
+            false,
+            image.is_privileged(),
+        )?;
+        if !output.status.success() {
+            error!("Failure to create container {}", cname);
+            result
+                .logs
+                .push(format!("ERROR: Failure to create container {}", cname));
+            result.success = false;
+            e.job_results.push(result);
+            break;
+        }
+        debug!("Successfully created container {}", cname);
+
+        // then, run the steps
         for step in &job.steps {
             let mut step_counter = 0;
             let step_counter_as_str = step_counter.to_string();
@@ -100,15 +148,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
             info!(" Running step \"{}\"", s_name);
             for e in &step.exec {
                 info!("  - {}", e);
-                let output = run_from_image(
-                    &image_str,
-                    &job.generate_container_name(),
-                    &e,
-                    &volumes,
-                    &job.env.clone().unwrap_or_default(),
-                    true,
-                    image.is_privileged(),
-                )?;
+                let output = run_in_container(&cname, e)?;
                 if output.stdout.len() > 0 {
                     let s = String::from_utf8_lossy(&output.stdout);
                     let _ = &s
@@ -144,6 +184,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
             }
         }
         e.job_results.push(result);
+        docker_remove_container(&cname)?;
     }
     Ok(e)
 }

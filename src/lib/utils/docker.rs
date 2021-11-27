@@ -74,7 +74,7 @@ fn docker_cmd(args: &[&str], current_dir: &str) -> Result<Output> {
 
 /// builds an image, returning the name of the newly built image
 pub fn build_image(config: &FakeCIDockerBuild) -> Result<String> {
-    debug!("build image called with {:#?}", config);
+    debug!("build image called with {:?}", config);
     let rand_name = rng_docker_chars(12);
     let name = &config.name.as_ref().unwrap_or(&rand_name);
     let default_context = ".".to_string();
@@ -132,7 +132,6 @@ pub fn docker_remove_image(image: &str) -> Result<()> {
 
 pub fn docker_remove_container(container: &str) -> Result<()> {
     let args = &["rm", container];
-    debug!("Running docker {}", args.join(" "));
     let output = docker_cmd(args, &cwd()?)?;
     if !output.status.success() {
         return Err(anyhow::Error::msg(format!(
@@ -149,7 +148,7 @@ pub fn docker_remove_container(container: &str) -> Result<()> {
 /// use fakeci::utils::docker::{docker_remove_container, run_from_image, run_in_container};
 /// let image = "ubuntu";
 /// let cname = "fakeci-container-reuse-doctest";
-/// let commands = vec!["ls", "echo hello world", "touch hello.txt"];
+/// let commands = vec!["ls", "echo hello world"];
 /// let _ = run_from_image(image, cname, "bash", &[], &HashMap::default(), false, false);
 /// for cmd in commands {
 ///     let o = run_in_container(cname, cmd);
@@ -157,10 +156,11 @@ pub fn docker_remove_container(container: &str) -> Result<()> {
 ///     let status = o.unwrap().status;
 ///     assert!(status.success());
 /// }
-/// let _ = docker_remove_container(cname)?;
+/// let _ = docker_remove_container(cname);
 /// ```
 pub fn run_in_container(container: &str, command: &str) -> Result<Output> {
     let args = &["start", "-ai", container];
+    debug!("Running docker {}", &args.join(" "));
     let mut process = Command::new("docker")
         .args(args)
         .stdin(Stdio::piped())
@@ -168,6 +168,7 @@ pub fn run_in_container(container: &str, command: &str) -> Result<Output> {
         .stderr(Stdio::piped())
         .spawn()?;
     let c_stdin = process.stdin.as_mut().unwrap();
+    debug!("piping \"{}\" to {}", command, container);
     c_stdin.write_all(command.as_bytes())?;
     Ok(process.wait_with_output()?)
 }
@@ -179,9 +180,9 @@ pub fn run_in_container(container: &str, command: &str) -> Result<Output> {
 /// # use fakeci::utils::docker::run_from_image;
 /// # let _ = pretty_env_logger::try_init();
 /// # use pretty_assertions::assert_eq;
-/// let output = run_from_image("busybox", "fake-ci-doctest","echo hi", &[], &HashMap::default(), true, false).expect("could not run docker :'(");
+/// let output = run_from_image("busybox", "fake-ci-doctest","sh", &[], &HashMap::default(), true, false).expect("could not run docker :'(");
 /// assert_eq!(output.status.success(), true);
-/// assert_eq!(String::from_utf8_lossy(&output.stdout), "hi\n");
+/// assert_eq!(String::from_utf8_lossy(&output.stdout), "");
 /// ```
 pub fn run_from_image(
     image: &str,
@@ -211,6 +212,7 @@ pub fn run_from_image(
     let args = {
         let mut args: Vec<&str> = Vec::new();
         args.push(&s_run);
+        args.push("-i");
         if one_time {
             args.push("--rm");
         }
@@ -224,8 +226,19 @@ pub fn run_from_image(
         args.extend(command.split_whitespace());
         args
     };
-    debug!("Running \"docker {}\"", &args.join(" "));
-    let out = Command::new("docker").args(args).envs(env).output()?;
+    debug!("Running docker {}", &args.join(" "));
+    let mut proc = Command::new("docker")
+        .args(args)
+        .envs(env)
+        .stdin(Stdio::piped())
+        .spawn()?;
+    {
+        let stdin = proc.stdin.as_mut().unwrap();
+        debug!("writing exit to stdin…");
+        stdin.write_all(b"exit")?;
+    }
+    debug!("waiting for docker run completion…");
+    let out = proc.wait_with_output()?;
     debug!("docker execution over");
     Ok(out)
 }
