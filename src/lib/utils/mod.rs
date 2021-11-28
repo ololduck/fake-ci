@@ -1,9 +1,13 @@
 use crate::conf::FakeCIJob;
-use crate::{FakeCIRepoConfig, IMAGE};
+use crate::{FakeCIRepoConfig, Image};
 use anyhow::{Error, Result};
 use log::debug;
+use std::env;
+use std::env::current_dir;
+use std::path::PathBuf;
 
 pub mod docker;
+pub mod git;
 
 #[cfg(test)]
 pub mod tests {
@@ -75,7 +79,7 @@ pub fn trim_newline(s: &mut String) {
 pub fn get_job_image_or_default<'a>(
     job: &'a FakeCIJob,
     config: &'a FakeCIRepoConfig,
-) -> Result<&'a IMAGE> {
+) -> Result<&'a Image> {
     for j in &config.pipeline {
         if j == job {
             if j.image.is_some() {
@@ -89,4 +93,16 @@ pub fn get_job_image_or_default<'a>(
         }
     }
     Err(Error::msg("Could not find the given job in the config"))
+}
+
+/// Returns the cache dir in use
+pub fn cache_dir() -> PathBuf {
+    let path = match env::var("XDG_CACHE_HOME") {
+        Ok(s) => PathBuf::from(s),
+        Err(_) => match env::var("HOME") {
+            Ok(s) => PathBuf::from(s).join(".cache"),
+            Err(_) => current_dir().expect("could not get cwd!").join(".cache"),
+        },
+    };
+    path.join("fake-ci")
 }

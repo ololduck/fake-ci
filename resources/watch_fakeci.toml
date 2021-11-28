@@ -1,0 +1,6 @@
+watch_interval = 30
+
+[[repository]]
+name = "fakeci"
+uri = "https://github.com/paulollivier/fake-ci.git"
+branches = "*"
