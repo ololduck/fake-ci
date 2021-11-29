@@ -59,9 +59,9 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
                 })
             }) {
                 info!("Detected change in {}#{}!", repo.name, branch);
-                let res = launch(&repo.uri, &branch)?;
+                let _res = launch(&repo.uri, &branch)?;
             }
-            repo.persist();
+            repo.persist()?;
         }
         thread::sleep(wait_period);
     }
