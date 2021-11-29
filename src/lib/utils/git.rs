@@ -15,7 +15,7 @@ lazy_static! {
 
 #[cfg(test)]
 mod tests {
-    use log::debug;
+    use log::trace;
     use pretty_assertions::assert_eq;
     use pretty_env_logger::try_init;
 
@@ -25,7 +25,7 @@ mod tests {
     fn test_ref_pattern() {
         let s = "17af6fe1acfcf453025c8f221fdcf8842acbb38b        refs/heads/main";
         let cap = REF_PATTERN.captures(s).expect("could not match pattern");
-        debug!("capture: {:#?}", cap);
+        trace!("capture: {:#?}", cap);
         assert_eq!(
             cap[1].to_string(),
             "17af6fe1acfcf453025c8f221fdcf8842acbb38b"
@@ -37,7 +37,7 @@ mod tests {
     fn test_fetch() {
         let _ = try_init();
         let res = fetch("https://github.com/paulollivier/fake-ci").expect("could not list remote");
-        debug!("res: {:#?}", res);
+        trace!("res: {:#?}", res);
         assert!(res.contains_key("main"));
         assert!(res.get("main").unwrap_or(&"".to_string()).len() > 0);
     }
@@ -47,10 +47,10 @@ mod tests {
 /// ```
 /// # use fakeci::utils::git::fetch;
 /// # use pretty_env_logger::try_init;
-/// # use log::debug;
+/// # use log::trace;
 /// # let _ = try_init();
 /// let res = fetch("https://github.com/paulollivier/fake-ci").expect("could not list remote");
-/// # debug!("{:#?}", res);
+/// # trace!("{:#?}", res);
 /// assert!(res.contains_key("main"));
 /// assert!(res.get("main").unwrap_or(&"".to_string()).len() > 0);
 /// ```
@@ -63,24 +63,14 @@ pub fn fetch(uri: &str) -> Result<HashMap<String, String>> {
         .output()?;
     if !o.status.success() {
         error!("failed to run git ls-remote --heads {}", uri);
-        return Err(anyhow::Error::msg(format!(
-            "failed to run git ls-remote --heads {}",
-            uri
-        )));
+        return Err(anyhow!("failed to run git ls-remote --heads {}", uri));
     }
 
     let i: HashMap<String, String> = String::from_utf8(o.stdout)?
         .lines()
-        .filter_map(|line| {
-            debug!("line: {}", line);
-            REF_PATTERN.captures(line)
-        })
-        .map(|capture| {
-            debug!("capture: {:#?}", capture);
-            (capture[2].to_string(), capture[1].to_string())
-        })
+        .filter_map(|line| REF_PATTERN.captures(line))
+        .map(|capture| (capture[2].to_string(), capture[1].to_string()))
         .collect();
-    debug!("hashmap: {:?}", i);
     Ok(HashMap::from_iter(i))
 }
 

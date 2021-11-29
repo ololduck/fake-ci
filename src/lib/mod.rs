@@ -85,7 +85,7 @@ pub struct JobResult {
 #[derive(Default, Serialize)]
 pub struct ExecutionResult {
     pub job_results: Vec<JobResult>,
-    pub artifacts: Vec<String>,
+    pub branch: String,
 }
 
 fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
@@ -209,7 +209,8 @@ pub fn launch(repo_url: &str, branch: &str) -> Result<ExecutionResult> {
     git_clone_with_branch_and_path(repo_url, branch, root.path())?;
     let old_path = env::current_dir()?;
     env::set_current_dir(root.path())?;
-    let r = execute_from_file(Path::new(".fakeci.yml"))?;
+    let mut r = execute_from_file(Path::new(".fakeci.yml"))?;
+    r.branch = branch.to_string();
     env::set_current_dir(old_path)?;
     Ok(r)
 }

@@ -3,7 +3,7 @@ use std::env::current_dir;
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use log::{debug, error};
 use rand::Rng;
 
@@ -12,14 +12,16 @@ use crate::utils::trim_newline;
 
 #[cfg(test)]
 mod tests {
+    use std::fs::{remove_file, File};
+    use std::io::Write;
+
+    use pretty_assertions::assert_eq;
+    use tempdir::TempDir;
+
     use crate::build_image;
     use crate::conf::FakeCIDockerBuild;
     use crate::utils::docker::docker_remove_image;
     use crate::utils::tests::with_dir;
-    use pretty_assertions::assert_eq;
-    use std::fs::{remove_file, File};
-    use std::io::Write;
-    use tempdir::TempDir;
 
     #[test]
     fn docker_build() {
@@ -97,10 +99,7 @@ pub fn build_image(config: &FakeCIDockerBuild) -> Result<String> {
             "Error on docker build: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        return Err(anyhow::Error::msg(format!(
-            "Could not build docker image {}",
-            args[3]
-        )));
+        return Err(anyhow!("Could not build docker image {}", args[3]));
     }
 
     Ok(name.to_string())
@@ -112,7 +111,7 @@ pub(crate) fn rng_docker_chars(n: u8) -> String {
         "fakeci-{}",
         (0..n)
             .map(|_| {
-                let idx = rng.gen_range(0, DOCKER_NAME_CHARSET.len());
+                let idx = rng.gen_range(0..DOCKER_NAME_CHARSET.len());
                 DOCKER_NAME_CHARSET[idx] as char
             })
             .collect::<String>()
@@ -125,7 +124,7 @@ pub fn docker_remove_image(image: &str) -> Result<()> {
     let args = &["rmi", image];
     let output = docker_cmd(args, &cwd()?)?;
     if !output.status.success() {
-        return Err(anyhow::Error::msg("Could not remove docker image"));
+        return Err(anyhow!("Could not remove docker image"));
     }
     Ok(())
 }
@@ -134,10 +133,7 @@ pub fn docker_remove_container(container: &str) -> Result<()> {
     let args = &["rm", container];
     let output = docker_cmd(args, &cwd()?)?;
     if !output.status.success() {
-        return Err(anyhow::Error::msg(format!(
-            "Could not remove docker container {}",
-            container
-        )));
+        return Err(anyhow!("Could not remove docker container {}", container));
     }
     Ok(())
 }
@@ -222,6 +218,7 @@ pub fn run_from_image(
         args.push(&cname);
         args.push("--workdir=/code");
         args.extend(vols.iter().map(|v| v.as_str()));
+        args.push("--pull=always");
         args.push(image);
         args.extend(command.split_whitespace());
         args

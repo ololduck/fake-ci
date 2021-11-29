@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 
 use anyhow::Result;
 use glob;
-use log::{error, warn};
+use log::{error, trace, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::utils::cache_dir;
@@ -202,6 +202,20 @@ impl FakeCIBinaryRepositoryConfig {
     }
 
     pub fn init(&mut self) {
+        let v = match &self.branches {
+            BranchesSpec::Single(s) => {
+                trace!("Compiling branch pattern {}", s);
+                vec![glob::Pattern::new(&s).expect(&format!("could not compile regex {}", s))]
+            }
+            BranchesSpec::Multiple(v) => v
+                .iter()
+                .map(|s| {
+                    trace!("Compiling branch pattern {}", s);
+                    glob::Pattern::new(s).expect(&format!("could not compile regex {}", s))
+                })
+                .collect(),
+        };
+        self.br_regexps = v;
         // find cache dir
         let cache = cache_dir();
         // read cache dir
@@ -226,19 +240,9 @@ impl FakeCIBinaryRepositoryConfig {
             }
         };
         self.refs.extend(refs);
-        let v = match &self.branches {
-            BranchesSpec::Single(s) => {
-                vec![glob::Pattern::new(&s).expect(&format!("could not compile regex {}", s))]
-            }
-            BranchesSpec::Multiple(v) => v
-                .iter()
-                .map(|s| glob::Pattern::new(s).expect(&format!("could not compile regex {}", s)))
-                .collect(),
-        };
-        self.br_regexps = v;
     }
 
-    pub fn persist(self) -> Result<()> {
+    pub fn persist(&self) -> Result<()> {
         // find cache dir
         let cache = cache_dir();
         let mut f = File::create(cache.join(format!("{}.yml", self.name)))?;

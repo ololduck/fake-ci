@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
-use log::{debug, info};
+use log::{debug, info, trace};
 use pretty_env_logger::try_init;
 
 use fakeci::conf::FakeCIBinaryConfig;
@@ -38,30 +38,30 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
     let term = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&term))?;
     let wait_period = Duration::from_secs(config.watch_interval as u64);
-    let _ = config
-        .repositories
-        .iter_mut()
-        .map(|r| {
-            debug!("updating repo {}", r.name);
-            r.init();
-        })
-        .collect::<Vec<_>>();
+    for r in config.repositories.iter_mut() {
+        debug!("updating repo {}", r.name);
+        r.init();
+    }
     while !term.load(Ordering::Relaxed) {
         for repo in config.repositories.iter_mut() {
             debug!("Checking repo {}", repo.name);
             // fetch and see if there's changes, and on which branches
             let changes = repo.update_branches()?;
+            info!("found changes: {:?}", changes);
             // if there's changes, execute the CI
             if changes.is_empty() {
                 continue;
             }
-            for branch in changes
-                .keys()
-                .filter(|k| repo.br_regexps.iter().any(|r| r.matches(k)))
-            {
+            for branch in changes.keys().filter(|k| {
+                repo.br_regexps.iter().any(|r| {
+                    trace!("pattern: {}, k: {}", r, k);
+                    r.matches(k)
+                })
+            }) {
                 info!("Detected change in {}#{}!", repo.name, branch);
-                launch(&repo.uri, &branch)?;
+                let res = launch(&repo.uri, &branch)?;
             }
+            repo.persist();
         }
         thread::sleep(wait_period);
     }
