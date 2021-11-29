@@ -1,18 +1,18 @@
 use std::env;
 use std::fs::File;
 use std::path::Path;
-use std::process::Command;
 
 use anyhow::Result;
 use log::{debug, error, info};
 use serde::Serialize;
 use tempdir::TempDir;
 
-use crate::conf::{FakeCIRepoConfig, IMAGE};
+use crate::conf::{FakeCIRepoConfig, Image};
 use crate::utils::docker::{
     build_image, docker_remove_container, run_from_image, run_in_container,
 };
 use crate::utils::get_job_image_or_default;
+use crate::utils::git::git_clone_with_branch_and_path;
 
 pub mod conf;
 pub mod utils;
@@ -67,7 +67,7 @@ mod tests {
     #[ignore]
     fn dog_feeding() {
         let _ = pretty_env_logger::try_init();
-        let r = launch(".");
+        let r = launch(".", "main");
         assert!(r.is_ok());
         let r = r.unwrap();
         for job_result in r.job_results {
@@ -85,7 +85,7 @@ pub struct JobResult {
 #[derive(Default, Serialize)]
 pub struct ExecutionResult {
     pub job_results: Vec<JobResult>,
-    pub artifacts: Vec<String>,
+    pub branch: String,
 }
 
 fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
@@ -105,9 +105,9 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
             }
         };
         let image_str = match image {
-            IMAGE::Existing(s) => s.clone(),
-            IMAGE::Build(i) => build_image(i)?,
-            IMAGE::ExistingFull(e) => e.name.clone(),
+            Image::Existing(s) => s.clone(),
+            Image::Build(i) => build_image(i)?,
+            Image::ExistingFull(e) => e.name.clone(),
         };
 
         let mut volumes = Vec::new();
@@ -202,27 +202,15 @@ fn execute_from_file(path: &Path) -> Result<ExecutionResult> {
     Ok(r)
 }
 
-pub fn launch(repo_url: &str) -> Result<ExecutionResult> {
+pub fn launch(repo_url: &str, branch: &str) -> Result<ExecutionResult> {
     debug!("launch called with repo {}", repo_url);
     let root = TempDir::new("fakeci_execution")?;
     debug!("running in dir {}", root.path().display());
-    let output = Command::new("git")
-        .args([
-            "clone",
-            repo_url,
-            root.path()
-                .to_str()
-                .expect("Could not convert from tmpdir to str"),
-        ])
-        .output()?;
-    if !output.status.success() {
-        error!("Could not clone repo!!!!!!!S");
-        panic!();
-    }
+    git_clone_with_branch_and_path(repo_url, branch, root.path())?;
     let old_path = env::current_dir()?;
     env::set_current_dir(root.path())?;
-    let r = execute_from_file(Path::new(".fakeci.yml"))?;
-    //
+    let mut r = execute_from_file(Path::new(".fakeci.yml"))?;
+    r.branch = branch.to_string();
     env::set_current_dir(old_path)?;
     Ok(r)
 }
