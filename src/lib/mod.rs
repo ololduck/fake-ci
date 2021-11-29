@@ -15,13 +15,15 @@ use crate::utils::get_job_image_or_default;
 use crate::utils::git::git_clone_with_branch_and_path;
 
 pub mod conf;
+pub mod notifs;
 pub mod utils;
 
 #[cfg(test)]
 mod tests {
-    use pretty_assertions::assert_eq;
     use std::fs::remove_file;
     use std::path::PathBuf;
+
+    use pretty_assertions::assert_eq;
 
     use crate::utils::tests::{deserialize, get_sample_resource_file, with_dir};
     use crate::{execute_config, launch};
