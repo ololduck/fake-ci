@@ -50,10 +50,10 @@ mod tests {
             end_date: Utc::now(),
         };
 
-        let s = get_sample_resource_file("notifs/simple_smtp.toml")
-            .expect("could not read simple_smtp.toml");
+        let s = get_sample_resource_file("notifs/simple_smtp.yml")
+            .expect("could not read simple_smtp.yml");
 
-        let mailer: Mailer = toml::from_str(&s).expect("could not build mailer");
+        let mailer: Mailer = serde_yaml::from_str(&s).expect("could not build mailer");
         assert_eq!(mailer.from, "fakeci@example.org");
         assert!(mailer.send(&exec_res).is_ok());
     }
@@ -95,30 +95,38 @@ mod tests {
 }
 
 // TODO: handle auth (ssl brrr)
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
 #[serde(untagged)]
 pub enum SMTPAuth {
     None,
 }
 
-fn default_auth() -> SMTPAuth {
-    SMTPAuth::None
+impl Default for SMTPAuth {
+    fn default() -> Self {
+        Self::None
+    }
 }
 
-#[derive(Deserialize, Serialize)]
+fn is_default<T: Default + PartialEq>(t: &T) -> bool {
+    t == &T::default()
+}
+
+#[derive(Deserialize, Serialize, Debug)]
 pub struct SMTPConfig {
-    addr: String,
-    port: u16,
-    #[serde(default = "default_auth")]
-    auth: SMTPAuth,
+    pub(crate) addr: String,
+    pub(crate) port: u16,
+    #[serde(default = "SMTPAuth::default", skip_serializing_if = "is_default")]
+    pub(crate) auth: SMTPAuth,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Mailer {
-    from: String,
-    reply_to: Option<String>,
-    recipients: Option<Vec<String>>,
-    server: SMTPConfig,
+    pub(crate) from: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) reply_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) recipients: Option<Vec<String>>,
+    pub(crate) server: SMTPConfig,
 }
 
 fn render_text(ctx: &ExecutionResult) -> anyhow::Result<String> {
@@ -141,16 +149,16 @@ fn render_text(ctx: &ExecutionResult) -> anyhow::Result<String> {
 }
 
 impl Notify for Mailer {
-    fn send(self, exec_res: &ExecutionResult) -> anyhow::Result<()> {
+    fn send(&self, exec_res: &ExecutionResult) -> anyhow::Result<()> {
         let mut email = EmailBuilder::new().to(exec_res.context.commit.author.email.as_str());
-        if let Some(recipients) = self.recipients {
+        if let Some(recipients) = &self.recipients {
             for recipient in recipients {
                 debug!("Adding {} to recipients", recipient);
-                email = email.to(recipient);
+                email = email.to(recipient.to_string());
             }
         }
         let email = email
-            .from(self.from)
+            .from(self.from.as_str())
             .subject(format!(
                 "build results for {}: {}",
                 exec_res.context.branch,

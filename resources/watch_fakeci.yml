@@ -1,0 +1,5 @@
+watch_interval: 30
+repositories:
+  name: "fakeci"
+  uri: "https://github.com/paulollivier/fake-ci.git"
+  branches: "*"

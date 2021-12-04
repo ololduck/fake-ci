@@ -59,7 +59,12 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
                 })
             }) {
                 info!("Detected change in {}#{}!", repo.name, branch);
-                let _res = launch(&repo.uri, branch)?;
+                let res = launch(&repo.uri, branch)?;
+                if let Some(notifiers) = &repo.notifiers {
+                    for notifier in notifiers {
+                        notifier.send(&res)?;
+                    }
+                }
             }
             repo.persist()?;
         }
@@ -72,5 +77,5 @@ fn read_fakeci_config_file(config_file: &str) -> Result<FakeCIBinaryConfig> {
     let mut s = String::new();
     let mut f = File::open(config_file)?;
     f.read_to_string(&mut s)?;
-    Ok(toml::from_str(&s)?)
+    Ok(serde_yaml::from_str(&s)?)
 }

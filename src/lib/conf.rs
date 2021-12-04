@@ -7,13 +7,14 @@ use glob;
 use log::{error, trace, warn};
 use serde::{Deserialize, Serialize};
 
+use crate::notifs::Notifier;
 use crate::utils::cache_dir;
 use crate::utils::docker::{rng_docker_chars, DOCKER_NAME_CHARSET};
 use crate::utils::git::fetch;
 
 #[cfg(test)]
 mod tests {
-    use crate::conf::Image;
+    use crate::conf::{FakeCIBinaryConfig, Image};
     use crate::utils::tests::{deser_yaml, get_sample_resource_file};
 
     #[test]
@@ -50,6 +51,24 @@ mod tests {
                 panic!("got invalid image variant: {:?}", s);
             }
         }
+    }
+
+    #[test]
+    fn notifier_config() {
+        let c = get_sample_resource_file("notifiers.yml").expect("not found");
+        let conf: FakeCIBinaryConfig = serde_yaml::from_str(&c).expect("Could not parse yaml");
+        assert_eq!(conf.repositories.len(), 1);
+        let _: () = conf
+            .repositories
+            .iter()
+            .map(|repo| {
+                if let Some(notifiers) = &repo.notifiers {
+                    assert_eq!(notifiers.len(), 1);
+                } else {
+                    panic!("notifiers was None");
+                }
+            })
+            .collect();
     }
 }
 
@@ -152,6 +171,7 @@ pub struct FakeCIBinaryRepositoryConfig {
     pub name: String,
     pub uri: String,
     pub branches: BranchesSpec,
+    pub notifiers: Option<Vec<Notifier>>,
     #[serde(skip, default)]
     pub refs: HashMap<String, String>,
     #[serde(skip, default)]
@@ -245,15 +265,17 @@ impl FakeCIBinaryRepositoryConfig {
 /// Config for the binary
 /// ```
 /// use fakeci::conf::FakeCIBinaryConfig;
-/// let s: &str = "[[repository]]\nname = \"test\"\nuri = \"http://fake.uri/\"\nbranches = [\"*\"]";
-/// let c: FakeCIBinaryConfig = toml::from_str(s).expect("invalid toml");
+/// let s: &str = "repositories:
+///   - name: blabla
+///     uri: https://github.com/paulollivier/fake-ci
+///     branches: \"*\"";
+/// let c: FakeCIBinaryConfig = serde_yaml::from_str(s).expect("invalid yaml");
 /// assert_eq!(c.watch_interval, 300);
 /// assert_eq!(c.repositories.len(), 1);
 /// ```
 pub struct FakeCIBinaryConfig {
     #[serde(default = "watch_interval_default")]
     pub watch_interval: u32,
-    #[serde(alias = "repository")]
     pub repositories: Vec<FakeCIBinaryRepositoryConfig>,
 }
 
