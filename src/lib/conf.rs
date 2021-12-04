@@ -192,18 +192,19 @@ impl FakeCIBinaryRepositoryConfig {
         for d in &deleted {
             self.refs.remove(d);
         }
-        let added: HashMap<String, String> = HashMap::from_iter(
+        let mut changed: HashMap<String, String> = HashMap::from_iter(
             r.iter()
                 .filter(|(k, _)| !self.refs.contains_key(*k))
                 .map(|(k, v)| (k.to_string(), v.to_string())),
         );
-        diff.extend(added.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+        diff.extend(changed.iter().map(|(k, v)| (k.to_string(), v.to_string())));
         for (k, v) in self.refs.iter() {
-            if r.contains_key(k) && r.get(k).unwrap() != self.refs.get(k).unwrap() {
-                diff.insert(k.to_string(), v.to_string());
+            if r.contains_key(k) && r.get(k).unwrap() != v {
+                changed.insert(k.to_string(), r.get(k).unwrap().to_string());
+                diff.insert(k.to_string(), r.get(k).unwrap().to_string());
             }
         }
-        self.refs.extend(added);
+        self.refs.extend(changed);
         Ok(diff)
     }
 
