@@ -7,8 +7,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
-use log::{debug, info, trace};
-use pretty_env_logger::try_init;
+use log::{debug, info, trace, LevelFilter};
 
 use fakeci::conf::FakeCIBinaryConfig;
 use fakeci::launch;
@@ -16,7 +15,9 @@ use fakeci::launch;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() -> Result<()> {
-    let _ = try_init();
+    pretty_env_logger::formatted_timed_builder()
+        .filter_level(LevelFilter::Trace)
+        .init();
     let matches = App::new("fake-ci")
         .version(VERSION)
         .author("Paul O.")
@@ -66,10 +67,13 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
                     }
                 }
             }
+            trace!("finished execution, persisting branch values…");
             repo.persist()?;
         }
+        trace!("Waiting {:?} seconds", wait_period);
         thread::sleep(wait_period);
     }
+    info!("Exiting");
     Ok(())
 }
 

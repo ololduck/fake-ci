@@ -1,10 +1,10 @@
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{create_dir_all, File};
 use std::io::{Read, Write};
 
 use anyhow::Result;
 use glob;
-use log::{error, trace, warn};
+use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::notifs::Notifier;
@@ -252,11 +252,15 @@ impl FakeCIBinaryRepositoryConfig {
     }
 
     pub fn persist(&self) -> Result<()> {
+        trace!("persist()");
         // find cache dir
         let cache = cache_dir();
+        trace!("cache: {}", cache.display());
+        create_dir_all(&cache)?;
         let mut f = File::create(cache.join(format!("{}.yml", self.name)))?;
         // write to cache dir
         let _ = f.write_all(serde_yaml::to_string(&self.refs)?.as_ref());
+        debug!("Finished persisting branch values to disk");
         Ok(())
     }
 }

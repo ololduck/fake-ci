@@ -6,7 +6,7 @@ repositories:
     notifiers:
       - type: mailer
         config:
-          from: fakeci@home.net
+          from: Fake CI <fakeci@home.net>
           server:
             addr: localhost
             port: 1025

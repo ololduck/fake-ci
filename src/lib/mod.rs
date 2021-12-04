@@ -188,6 +188,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
             let step_counter_as_str = step_counter.to_string();
             let s_name = step.name.as_ref().unwrap_or(&step_counter_as_str);
             info!(" Running step \"{}\"", s_name);
+            result.logs.push(format!("--- Step {} ---", s_name));
             for e in &step.exec {
                 info!("  - {}", e);
                 let output = run_in_container(&cname, e)?;
