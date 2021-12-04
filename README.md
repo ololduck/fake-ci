@@ -69,41 +69,41 @@ default:
 # a "pipeline" is a collection of "jobs", themselves comprising of "steps", containing "commands"
 pipeline:
     # this is a job definition
-    -   name: check, test & release # it has a name
-        # NOTE: either a per-job or a default image definition is needed
-        image: # optional: long form of using an image from docker hub
-            name: rust        # we can specify the image here (not needed in this example, as we defined it in defaults
-            privileged: false # by default
-        # NOTE: a job uses a single, re-used container
-        env: # optional: we can define envvars to pass to the container
-            RUST_LOG: debug
-        # optional: a list of volumes to mount.
-        # NOTE: the repository will always be mounted as /code in the container.
-        volumes:
-            # let's share the build cache between jobs by using a named volume (not yet implemented)
-            - fake-ci-target:/code/target
-        steps:
-            # a "step" is:
-            -   name: check # a name, used to identify the step in the log. If not given, "step {n}" is used
-                exec: # a list of commands to execute
-                    - cargo check
-            -   name: test
-                exec:
-                    - cargo test test_hello_world
-            -   name: release
-                exec:
-                    - cargo build --release
-    -   name: Run my special software
-        image: # let's tell Fake CI to build & use our own image, built from dockerfile
-            dockerfile: resources/mysoft/Dockerfile # optional: will be Dockerfile by default
-            context: resources/mysoft # optional: change build context
-            build_args: HTTP_PROXY    # optional: sets build-time vars
-            name: mysoft:latest       # optional: give it a custom tag
-            privileged: false         # optional: runs in privileged mode
-        steps:
-            -   name: run mysoft
-                exec:
-                    - mysoft
+    - name: check, test & release # it has a name
+      # NOTE: either a per-job or a default image definition is needed
+      image: # optional: long form of using an image from docker hub
+          name: rust # we can specify the image here (not needed in this example, as we defined it in defaults
+          privileged: false # by default
+      # NOTE: a job uses a single, re-used container
+      env: # optional: we can define envvars to pass to the container
+          RUST_LOG: debug
+      # optional: a list of volumes to mount.
+      # NOTE: the repository will always be mounted as /code in the container.
+      volumes:
+          # let's share the build cache between jobs by using a named volume (not yet implemented)
+          - fake-ci-target:/code/target
+      steps:
+          # a "step" is:
+          - name: check # a name, used to identify the step in the log. If not given, "step {n}" is used
+            exec: # a list of commands to execute
+                - cargo check
+          - name: test
+            exec:
+                - cargo test test_hello_world
+          - name: release
+            exec:
+                - cargo build --release
+    - name: Run my special software
+      image: # let's tell Fake CI to build & use our own image, built from dockerfile
+          dockerfile: resources/mysoft/Dockerfile # optional: will be Dockerfile by default
+          context: resources/mysoft # optional: change build context
+          build_args: HTTP_PROXY # optional: sets build-time vars
+          name: mysoft:latest # optional: give it a custom tag
+          privileged: false # optional: runs in privileged mode
+      steps:
+          - name: run mysoft
+            exec:
+                - mysoft
 ```
 
 ## Installation
@@ -139,39 +139,39 @@ As you can see, the `watch` subcommands wants for a configuration file. Here's a
 ```yaml
 watch_interval: 300 # timer on the event loop, in seconds
 repositories: # list of repositories
-    -   name: fake-ci # arbitrary name
-        uri: https://github.com/paulollivier/fake-ci.git
-        # alternate form, for instance for a gitflow branching model
-        # branches:
-        #   - main
-        #   - feature/*
-        #   - hotfix/*
-        branches: "*" # watch all branches matching this glob expression
-        notifiers: # notifiers control how to be notified of build results
-            -   type: mailer # for now, only the "mailer" type is available
-    -   config:
-            from: Fake CI <fakeci@home.net> # From: address
-            server: # SMTP server to connect to. Here, a maildev.
-                addr: localhost
-                port: 1025
-                # NOTE: for now, this config can't use SMTP auth or SSL connections
+    - name: fake-ci # arbitrary name
+      uri: https://github.com/paulollivier/fake-ci.git
+      # alternate form, for instance for a gitflow branching model
+      # branches:
+      #   - main
+      #   - feature/*
+      #   - hotfix/*
+      branches: "*" # watch all branches matching this glob expression
+      notifiers: # notifiers control how to be notified of build results
+          - type: mailer # for now, only the "mailer" type is available
+    - config:
+          from: Fake CI <fakeci@home.net> # From: address
+          server: # SMTP server to connect to. Here, a maildev.
+              addr: localhost
+              port: 1025
+              # NOTE: for now, this config can't use SMTP auth or SSL connections
 ```
 
 ## Design
 
-- Everything as flat files or envvars
-- As much self-contained as possible.
-- Support for multiple http hooks systems (priorities: GitHub, Gitea & GitLab)
+-   Everything as flat files or envvars
+-   As much self-contained as possible.
+-   Support for multiple http hooks systems (priorities: GitHub, Gitea & GitLab)
 
 ## Plan
 
-- [ ] Export build logs & artifacts
-- [ ] HTTP hooks APIs
-- [ ] Jobs execution in docker images (dir sharing amongst instances?) => Self-Cleanup
-- [ ] Artifacts upload mechanisms
-- [ ] Async exec, run jobs in parallel
+-   [ ] Export build logs & artifacts
+-   [ ] HTTP hooks APIs
+-   [ ] Jobs execution in docker images (dir sharing amongst instances?) => Self-Cleanup
+-   [ ] Artifacts upload mechanisms
+-   [ ] Async exec, run jobs in parallel
 
 ### Nice to have
 
-- [ ] jobs depends_on
-- [ ] Web UI?
+-   [ ] jobs depends_on
+-   [ ] Web UI?
