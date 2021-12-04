@@ -1,0 +1,5 @@
+from = "fakeci@example.org"
+
+[server]
+addr = "localhost"
+port = 1025
