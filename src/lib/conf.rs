@@ -14,12 +14,12 @@ use crate::utils::git::fetch;
 #[cfg(test)]
 mod tests {
     use crate::conf::Image;
-    use crate::utils::tests::{deserialize, get_sample_resource_file};
+    use crate::utils::tests::{deser_yaml, get_sample_resource_file};
 
     #[test]
     fn basic_config() {
         let s = get_sample_resource_file("basic_config.yml").expect("could not find basic_config");
-        let c = deserialize(&s).expect("could not deserialize basic config");
+        let c = deser_yaml(&s).expect("could not deserialize basic config");
         assert_eq!(c.pipeline.len(), 2);
         let j0 = c.pipeline.get(0).unwrap();
         assert_eq!(j0.name, "job 0");
@@ -31,7 +31,7 @@ mod tests {
 
     #[test]
     fn docker_build() {
-        let c = deserialize(
+        let c = deser_yaml(
             &get_sample_resource_file("docker_build.yml").expect("could not find docker_build"),
         )
         .expect("could not parse docker_build");
@@ -158,17 +158,6 @@ pub struct FakeCIBinaryRepositoryConfig {
     pub br_regexps: Vec<glob::Pattern>,
 }
 
-// impl Default for FakeCIBinaryRepositoryConfig {
-//     fn default() -> Self {
-//         Self {
-//             name: "".to_string(),
-//             uri: "".to_string(),
-//             branches: BranchesSpec::Single("".to_string()),
-//             refs: Default::default(),
-//         }
-//     }
-// }
-
 impl FakeCIBinaryRepositoryConfig {
     // horribly inefficient function.
     // Hopefully we won't meet a repo with millions of branches.
@@ -191,10 +180,8 @@ impl FakeCIBinaryRepositoryConfig {
         );
         diff.extend(added.iter().map(|(k, v)| (k.to_string(), v.to_string())));
         for (k, v) in self.refs.iter() {
-            if r.contains_key(k) {
-                if r.get(k).unwrap() != self.refs.get(k).unwrap() {
-                    diff.insert(k.to_string(), v.to_string());
-                }
+            if r.contains_key(k) && r.get(k).unwrap() != self.refs.get(k).unwrap() {
+                diff.insert(k.to_string(), v.to_string());
             }
         }
         self.refs.extend(added);
@@ -205,7 +192,7 @@ impl FakeCIBinaryRepositoryConfig {
         let v = match &self.branches {
             BranchesSpec::Single(s) => {
                 trace!("Compiling branch pattern {}", s);
-                vec![glob::Pattern::new(&s).expect(&format!("could not compile regex {}", s))]
+                vec![glob::Pattern::new(s).expect(&format!("could not compile regex {}", s))]
             }
             BranchesSpec::Multiple(v) => v
                 .iter()

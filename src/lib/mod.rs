@@ -3,8 +3,9 @@ use std::fs::File;
 use std::path::Path;
 
 use anyhow::Result;
+use chrono::{DateTime, Duration, Utc};
 use log::{debug, error, info};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tempdir::TempDir;
 
 use crate::conf::{FakeCIRepoConfig, Image};
@@ -12,7 +13,7 @@ use crate::utils::docker::{
     build_image, docker_remove_container, run_from_image, run_in_container,
 };
 use crate::utils::get_job_image_or_default;
-use crate::utils::git::git_clone_with_branch_and_path;
+use crate::utils::git::{get_commit, git_clone_with_branch_and_path, Commit};
 
 pub mod conf;
 pub mod notifs;
@@ -25,7 +26,7 @@ mod tests {
 
     use pretty_assertions::assert_eq;
 
-    use crate::utils::tests::{deserialize, get_sample_resource_file, with_dir};
+    use crate::utils::tests::{deser_yaml, get_sample_resource_file, with_dir};
     use crate::{execute_config, launch};
 
     #[test]
@@ -51,7 +52,7 @@ mod tests {
     #[test]
     fn multiple_steps() -> anyhow::Result<()> {
         let _ = pretty_env_logger::try_init();
-        let conf = deserialize(&get_sample_resource_file("job_container_reuse.yml")?)?;
+        let conf = deser_yaml(&get_sample_resource_file("job_container_reuse.yml")?)?;
         let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         with_dir(&p, || {
             let result = execute_config(conf);
@@ -78,16 +79,56 @@ mod tests {
     }
 }
 
-#[derive(Default, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct JobResult {
     pub success: bool,
+    pub name: String,
+    pub start_date: DateTime<Utc>,
+    pub end_date: DateTime<Utc>,
     pub logs: Vec<String>,
 }
 
+impl JobResult {
+    pub fn duration(&self) -> Duration {
+        self.end_date - self.start_date
+    }
+}
+
+impl Default for JobResult {
+    fn default() -> Self {
+        Self {
+            success: false,
+            name: "".to_string(),
+            start_date: Utc::now(),
+            end_date: Utc::now(),
+            logs: vec![],
+        }
+    }
+}
+
 #[derive(Default, Serialize)]
+pub struct ExecutionContext {
+    pub branch: String,
+    pub commit: Commit,
+}
+
+#[derive(Serialize)]
 pub struct ExecutionResult {
     pub job_results: Vec<JobResult>,
-    pub branch: String,
+    pub context: ExecutionContext,
+    pub start_date: DateTime<Utc>,
+    pub end_date: DateTime<Utc>,
+}
+
+impl Default for ExecutionResult {
+    fn default() -> Self {
+        Self {
+            job_results: vec![],
+            context: Default::default(),
+            start_date: Utc::now(),
+            end_date: Utc::now(),
+        }
+    }
 }
 
 fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
@@ -97,6 +138,8 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
         let mut logs: Vec<String> = Vec::new();
         let mut result = JobResult {
             success: true,
+            start_date: Utc::now(),
+            name: String::from(&job.name),
             ..Default::default()
         };
         let image = match get_job_image_or_default(&job, &conf) {
@@ -185,9 +228,11 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
                 break;
             }
         }
+        result.end_date = Utc::now();
         e.job_results.push(result);
         docker_remove_container(&cname)?;
     }
+    e.end_date = Utc::now();
     Ok(e)
 }
 
@@ -212,7 +257,8 @@ pub fn launch(repo_url: &str, branch: &str) -> Result<ExecutionResult> {
     let old_path = env::current_dir()?;
     env::set_current_dir(root.path())?;
     let mut r = execute_from_file(Path::new(".fakeci.yml"))?;
-    r.branch = branch.to_string();
+    r.context.branch = branch.to_string();
+    r.context.commit = get_commit("HEAD")?;
     env::set_current_dir(old_path)?;
     Ok(r)
 }
