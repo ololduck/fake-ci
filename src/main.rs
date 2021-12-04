@@ -46,8 +46,10 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
     while !term.load(Ordering::Relaxed) {
         for repo in config.repositories.iter_mut() {
             debug!("Checking repo {}", repo.name);
+            trace!("repo before update: {:#?}", repo);
             // fetch and see if there's changes, and on which branches
             let changes = repo.update_branches()?;
+            trace!("repo after update: {:#?}", repo);
             info!("found changes: {:?}", changes);
             // if there's changes, execute the CI
             if changes.is_empty() {

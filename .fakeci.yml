@@ -14,5 +14,3 @@ pipeline:
       - name: release
         exec:
           - cargo build --release
-artifacts:
-  - target/release/fake-ci

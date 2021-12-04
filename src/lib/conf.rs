@@ -80,7 +80,6 @@ pub struct FakeCIDefaultConfig {
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct FakeCIRepoConfig {
     pub pipeline: Vec<FakeCIJob>,
-    pub artefacts: Option<Vec<String>>,
     pub default: Option<FakeCIDefaultConfig>,
 }
 
