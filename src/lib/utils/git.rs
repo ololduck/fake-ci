@@ -5,7 +5,7 @@ use std::process::Command;
 
 /// all utility functions git-related
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use log::{debug, error};
 use regex::Regex;
@@ -189,18 +189,17 @@ pub(crate) fn parse_raw_commit(raw: &str) -> Result<Commit> {
                 //then its a message commit
                 has_found_git_msg = true;
                 let line = line.strip_prefix("    ");
-                match line {
-                    Some(s) => c.message.push_str(s),
-                    None => {}
+                if let Some(s) = line {
+                    c.message.push_str(s)
                 }
             }
             false => {
                 if line.is_empty() && !has_found_git_msg {
                     continue;
                 } else if has_found_git_msg {
-                    c.message.push_str("\n");
+                    c.message.push('\n');
                     continue;
-                } else if has_found_gpg_sig && line.starts_with(" ") {
+                } else if has_found_gpg_sig && line.starts_with(' ') {
                     continue;
                 }
                 let tokens = line.split_whitespace().collect::<Vec<&str>>();
@@ -241,7 +240,7 @@ pub fn get_commit(reference: &str) -> Result<Commit> {
     if !out.status.success() {
         return Err(anyhow!("Could not read commit {}", reference));
     }
-    Ok(parse_raw_commit(&String::from_utf8_lossy(&out.stdout))?)
+    parse_raw_commit(&String::from_utf8_lossy(&out.stdout))
 }
 
 /// Fetches all the remotes in repo

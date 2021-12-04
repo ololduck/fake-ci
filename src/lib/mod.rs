@@ -131,6 +131,7 @@ impl Default for ExecutionResult {
     }
 }
 
+#[allow(clippy::explicit_counter_loop)]
 fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
     let mut e = ExecutionResult::default();
     for job in &conf.pipeline {
@@ -142,7 +143,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
             name: String::from(&job.name),
             ..Default::default()
         };
-        let image = match get_job_image_or_default(&job, &conf) {
+        let image = match get_job_image_or_default(job, &conf) {
             Ok(i) => i,
             Err(e) => {
                 error!("Could not find image definition anywhere!: {}", e);
@@ -157,11 +158,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
 
         let mut volumes = Vec::new();
         if let Some(vols) = job.volumes.as_ref() {
-            volumes.extend(
-                vols.iter()
-                    .map(|s| String::from(s))
-                    .collect::<Vec<String>>(),
-            );
+            volumes.extend(vols.iter().map(String::from).collect::<Vec<String>>());
         }
         // first, create the container
         let cname = job.generate_container_name();
@@ -194,7 +191,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
             for e in &step.exec {
                 info!("  - {}", e);
                 let output = run_in_container(&cname, e)?;
-                if output.stdout.len() > 0 {
+                if !output.stdout.is_empty() {
                     let s = String::from_utf8_lossy(&output.stdout);
                     let _ = &s
                         .lines()
@@ -202,7 +199,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
                         .collect::<Vec<_>>();
                     result.logs.push(s.to_string());
                 }
-                if output.stderr.len() > 0 {
+                if !output.stderr.is_empty() {
                     let s = String::from_utf8_lossy(&output.stderr);
                     let _ = &s
                         .lines()
@@ -222,7 +219,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
                     result.success = false;
                     break;
                 }
-                step_counter = step_counter + 1;
+                step_counter += 1;
             }
             if !result.success {
                 break;

@@ -13,7 +13,7 @@ use pretty_env_logger::try_init;
 use fakeci::conf::FakeCIBinaryConfig;
 use fakeci::launch;
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() -> Result<()> {
     let _ = try_init();
@@ -59,7 +59,7 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
                 })
             }) {
                 info!("Detected change in {}#{}!", repo.name, branch);
-                let _res = launch(&repo.uri, &branch)?;
+                let _res = launch(&repo.uri, branch)?;
             }
             repo.persist()?;
         }

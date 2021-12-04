@@ -192,13 +192,15 @@ impl FakeCIBinaryRepositoryConfig {
         let v = match &self.branches {
             BranchesSpec::Single(s) => {
                 trace!("Compiling branch pattern {}", s);
-                vec![glob::Pattern::new(s).expect(&format!("could not compile regex {}", s))]
+                vec![glob::Pattern::new(s)
+                    .unwrap_or_else(|_| panic!("could not compile regex {}", s))]
             }
             BranchesSpec::Multiple(v) => v
                 .iter()
                 .map(|s| {
                     trace!("Compiling branch pattern {}", s);
-                    glob::Pattern::new(s).expect(&format!("could not compile regex {}", s))
+                    glob::Pattern::new(s)
+                        .unwrap_or_else(|_| panic!("could not compile regex {}", s))
                 })
                 .collect(),
         };

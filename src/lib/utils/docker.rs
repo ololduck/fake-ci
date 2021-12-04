@@ -91,7 +91,7 @@ pub fn build_image(config: &FakeCIDockerBuild) -> Result<String> {
         ),
         "-t",
         name,
-        &config.context.as_ref().unwrap_or(&default_context),
+        config.context.as_ref().unwrap_or(&default_context),
     ];
     let output = docker_cmd(args, config.context.as_ref().unwrap_or(&".".to_string()))?;
     if !output.status.success() {
@@ -206,9 +206,7 @@ pub fn run_from_image(
     let s_run = String::from("run");
     let cname = format!("--name={}", container_name);
     let args = {
-        let mut args: Vec<&str> = Vec::new();
-        args.push(&s_run);
-        args.push("-i");
+        let mut args: Vec<&str> = vec![&s_run, "-i"];
         if one_time {
             args.push("--rm");
         }

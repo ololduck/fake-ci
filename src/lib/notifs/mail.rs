@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use handlebars::{handlebars_helper, Handlebars};
 use lettre::{ClientSecurity, SendableEmail, SmtpClient, SmtpTransport, Transport};
 use lettre_email::EmailBuilder;
@@ -11,7 +11,7 @@ use crate::{ExecutionResult, JobResult};
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, Duration, Utc};
+    use chrono::{Duration, Utc};
     use log::debug;
     use pretty_assertions::assert_eq;
     use pretty_env_logger::try_init;
@@ -21,7 +21,7 @@ mod tests {
     use crate::notifs::Notify;
     use crate::utils::git::CommitPerson;
     use crate::utils::tests::get_sample_resource_file;
-    use crate::{run_from_image, Commit, ExecutionContext, ExecutionResult, JobResult};
+    use crate::{Commit, ExecutionContext, ExecutionResult, JobResult};
 
     #[test]
     #[ignore]
