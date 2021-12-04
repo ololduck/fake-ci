@@ -1,5 +1,12 @@
 watch_interval: 30
 repositories:
-  name: "fakeci"
-  uri: "https://github.com/paulollivier/fake-ci.git"
-  branches: "*"
+  - name: "fakeci"
+    uri: "https://github.com/paulollivier/fake-ci.git"
+    branches: "*"
+    notifiers:
+      - type: mailer
+        config:
+          from: fakeci@home.net
+          server:
+            addr: localhost
+            port: 1025

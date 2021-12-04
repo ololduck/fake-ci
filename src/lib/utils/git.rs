@@ -156,6 +156,13 @@ impl Default for CommitPerson {
     }
 }
 
+#[cfg(feature = "mails")]
+impl CommitPerson {
+    pub fn to_addr(&self) -> (String, String) {
+        (self.email.to_string(), self.name.to_string())
+    }
+}
+
 #[derive(Serialize)]
 pub struct Commit {
     pub hash: String,

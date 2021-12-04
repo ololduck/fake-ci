@@ -1,8 +1,11 @@
+use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use handlebars::{handlebars_helper, Handlebars};
+use lazy_static::lazy_static;
 use lettre::{ClientSecurity, SendableEmail, SmtpClient, SmtpTransport, Transport};
 use lettre_email::EmailBuilder;
-use log::debug;
+use log::{debug, trace};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -90,8 +93,12 @@ mod tests {
         debug!("result: {:#?}", s);
         assert!(s.is_ok());
         let s = s.unwrap();
-        debug!("rendered template: \n{}", s);
+        debug!("rendered template: \n{:?}", s);
     }
+}
+lazy_static! {
+    static ref EMAIL_REGEX: Regex =
+        Regex::new(r"([a-zA-Z_\- 0-9]+ )?<?([a-z0-9_\-\.\+]+@[a-z0-9\.\-_]+)>?").unwrap();
 }
 
 // TODO: handle auth (ssl brrr)
@@ -129,7 +136,7 @@ pub struct Mailer {
     pub(crate) server: SMTPConfig,
 }
 
-fn render_text(ctx: &ExecutionResult) -> anyhow::Result<String> {
+fn render_text(ctx: &ExecutionResult) -> anyhow::Result<(String, String)> {
     let mut reg = Handlebars::new();
     handlebars_helper!(status: |job_results: Vec<JobResult>| {
         match job_results.iter().any(|r| !r.success) {
@@ -142,23 +149,68 @@ fn render_text(ctx: &ExecutionResult) -> anyhow::Result<String> {
     });
     reg.register_helper("build_status", Box::new(status));
     reg.register_helper("duration", Box::new(duration));
-    Ok(reg.render_template(
-        include_str!("../../../resources/templates/notifs/mail.txt.hbs"),
-        &json!(ctx),
-    )?)
+    Ok((
+        reg.render_template(
+            include_str!("../../../resources/templates/notifs/mail.txt.hbs"),
+            &json!(ctx),
+        )?,
+        reg.render_template(
+            include_str!("../../../resources/templates/notifs/mail.html.hbs"),
+            &json!(ctx),
+        )?,
+    ))
+}
+
+enum EmailAddress {
+    Single(String),
+    Complete(String, String),
+}
+
+fn to_addr(s: &str) -> anyhow::Result<EmailAddress> {
+    let matches = EMAIL_REGEX.captures(s);
+    if let Some(matches) = matches {
+        let c1 = matches.get(1);
+        let c2 = matches.get(2);
+        if c1.is_some() && c2.is_some() {
+            return Ok(EmailAddress::Complete(
+                c2.unwrap().as_str().to_string(),
+                c1.unwrap().as_str().to_string(),
+            ));
+        } else if c2.is_some() {
+            return Ok(EmailAddress::Single(c2.unwrap().as_str().to_string()));
+        }
+    }
+    Err(anyhow!(
+        "could not make sense of \"{}\" as an email addr",
+        s
+    ))
 }
 
 impl Notify for Mailer {
     fn send(&self, exec_res: &ExecutionResult) -> anyhow::Result<()> {
-        let mut email = EmailBuilder::new().to(exec_res.context.commit.author.email.as_str());
+        let to = exec_res.context.commit.author.to_addr();
+        let email = EmailBuilder::new().to(to);
+        let mut email = match to_addr(&self.from)? {
+            EmailAddress::Single(s) => {
+                trace!("mail from {}", s);
+                email.from(s)
+            }
+            EmailAddress::Complete(e, n) => {
+                trace!("mail from {:?}", (&e, &n));
+                email.from((e, n))
+            }
+        };
         if let Some(recipients) = &self.recipients {
             for recipient in recipients {
                 debug!("Adding {} to recipients", recipient);
-                email = email.to(recipient.to_string());
+                email = match to_addr(recipient)? {
+                    EmailAddress::Single(s) => email.cc(s),
+                    EmailAddress::Complete(e, n) => email.cc((e, n)),
+                }
             }
         }
+        let (txt, html) = render_text(exec_res)?;
         let email = email
-            .from(self.from.as_str())
             .subject(format!(
                 "build results for {}: {}",
                 exec_res.context.branch,
@@ -167,7 +219,8 @@ impl Notify for Mailer {
                     true => "Failure",
                 }
             ))
-            .text(render_text(exec_res)?)
+            .text(txt)
+            .html(html)
             .build()
             .expect("Error while building mail!");
         let mut mailer = SmtpTransport::new(SmtpClient::new(
