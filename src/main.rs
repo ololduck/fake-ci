@@ -7,16 +7,17 @@ use std::time::Duration;
 
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
-use log::{debug, info, trace};
-use pretty_env_logger::try_init;
+use log::{debug, info, trace, LevelFilter};
 
 use fakeci::conf::FakeCIBinaryConfig;
 use fakeci::launch;
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() -> Result<()> {
-    let _ = try_init();
+    pretty_env_logger::formatted_timed_builder()
+        .filter_level(LevelFilter::Trace)
+        .init();
     let matches = App::new("fake-ci")
         .version(VERSION)
         .author("Paul O.")
@@ -45,8 +46,10 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
     while !term.load(Ordering::Relaxed) {
         for repo in config.repositories.iter_mut() {
             debug!("Checking repo {}", repo.name);
+            trace!("repo before update: {:#?}", repo);
             // fetch and see if there's changes, and on which branches
             let changes = repo.update_branches()?;
+            trace!("repo after update: {:#?}", repo);
             info!("found changes: {:?}", changes);
             // if there's changes, execute the CI
             if changes.is_empty() {
@@ -59,12 +62,20 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
                 })
             }) {
                 info!("Detected change in {}#{}!", repo.name, branch);
-                let _res = launch(&repo.uri, &branch)?;
+                let res = launch(&repo.uri, branch)?;
+                if let Some(notifiers) = &repo.notifiers {
+                    for notifier in notifiers {
+                        notifier.send(&res)?;
+                    }
+                }
             }
+            trace!("finished execution, persisting branch values…");
             repo.persist()?;
         }
+        trace!("Waiting {:?} seconds", wait_period);
         thread::sleep(wait_period);
     }
+    info!("Exiting");
     Ok(())
 }
 
@@ -72,5 +83,5 @@ fn read_fakeci_config_file(config_file: &str) -> Result<FakeCIBinaryConfig> {
     let mut s = String::new();
     let mut f = File::open(config_file)?;
     f.read_to_string(&mut s)?;
-    Ok(toml::from_str(&s)?)
+    Ok(serde_yaml::from_str(&s)?)
 }

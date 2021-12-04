@@ -1,35 +1,42 @@
-use crate::conf::FakeCIJob;
-use crate::{FakeCIRepoConfig, Image};
-use anyhow::{Error, Result};
-use log::debug;
 use std::env;
 use std::env::current_dir;
 use std::path::PathBuf;
+
+use anyhow::{Error, Result};
+use log::debug;
+
+use crate::conf::FakeCIJob;
+use crate::{FakeCIRepoConfig, Image};
 
 pub mod docker;
 pub mod git;
 
 #[cfg(test)]
 pub mod tests {
-    use crate::FakeCIRepoConfig;
-    use anyhow::Result;
-    use lazy_static::lazy_static;
-    use log::debug;
     use std::env::{current_dir, set_current_dir};
     use std::fs::File;
     use std::io::Read;
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
+
+    use anyhow::Result;
+    use lazy_static::lazy_static;
+    use log::debug;
+
+    use crate::FakeCIRepoConfig;
+
     lazy_static! {
         static ref WITH_DIR_MUTEX: Arc<Mutex<u8>> = Arc::new(Mutex::new(0u8));
     }
 
-    pub fn serialize(conf: &FakeCIRepoConfig) -> Result<String> {
+    pub fn ser_yaml(conf: &FakeCIRepoConfig) -> Result<String> {
         Ok(serde_yaml::to_string(conf)?)
     }
-    pub fn deserialize(s: &str) -> Result<FakeCIRepoConfig> {
+
+    pub fn deser_yaml(s: &str) -> Result<FakeCIRepoConfig> {
         Ok(serde_yaml::from_str(s)?)
     }
+
     pub fn get_sample_resource_file(p: &str) -> Result<String> {
         let mut s = String::new();
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -85,10 +92,8 @@ pub fn get_job_image_or_default<'a>(
             if j.image.is_some() {
                 debug!("found configured job image: {:?}", j.image);
                 return Ok(j.image.as_ref().unwrap());
-            } else if config.default.is_some() {
-                if config.default.as_ref().unwrap().image.is_some() {
-                    return Ok(config.default.as_ref().unwrap().image.as_ref().unwrap());
-                }
+            } else if config.default.is_some() && config.default.as_ref().unwrap().image.is_some() {
+                return Ok(config.default.as_ref().unwrap().image.as_ref().unwrap());
             }
         }
     }

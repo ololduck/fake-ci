@@ -3,8 +3,9 @@ use std::fs::File;
 use std::path::Path;
 
 use anyhow::Result;
+use chrono::{DateTime, Duration, Utc};
 use log::{debug, error, info};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tempdir::TempDir;
 
 use crate::conf::{FakeCIRepoConfig, Image};
@@ -12,18 +13,20 @@ use crate::utils::docker::{
     build_image, docker_remove_container, run_from_image, run_in_container,
 };
 use crate::utils::get_job_image_or_default;
-use crate::utils::git::git_clone_with_branch_and_path;
+use crate::utils::git::{get_commit, git_clone_with_branch_and_path, Commit};
 
 pub mod conf;
+pub mod notifs;
 pub mod utils;
 
 #[cfg(test)]
 mod tests {
-    use pretty_assertions::assert_eq;
     use std::fs::remove_file;
     use std::path::PathBuf;
 
-    use crate::utils::tests::{deserialize, get_sample_resource_file, with_dir};
+    use pretty_assertions::assert_eq;
+
+    use crate::utils::tests::{deser_yaml, get_sample_resource_file, with_dir};
     use crate::{execute_config, launch};
 
     #[test]
@@ -49,7 +52,7 @@ mod tests {
     #[test]
     fn multiple_steps() -> anyhow::Result<()> {
         let _ = pretty_env_logger::try_init();
-        let conf = deserialize(&get_sample_resource_file("job_container_reuse.yml")?)?;
+        let conf = deser_yaml(&get_sample_resource_file("job_container_reuse.yml")?)?;
         let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         with_dir(&p, || {
             let result = execute_config(conf);
@@ -76,18 +79,59 @@ mod tests {
     }
 }
 
-#[derive(Default, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct JobResult {
     pub success: bool,
+    pub name: String,
+    pub start_date: DateTime<Utc>,
+    pub end_date: DateTime<Utc>,
     pub logs: Vec<String>,
 }
 
-#[derive(Default, Serialize)]
-pub struct ExecutionResult {
-    pub job_results: Vec<JobResult>,
-    pub branch: String,
+impl JobResult {
+    pub fn duration(&self) -> Duration {
+        self.end_date - self.start_date
+    }
 }
 
+impl Default for JobResult {
+    fn default() -> Self {
+        Self {
+            success: false,
+            name: "".to_string(),
+            start_date: Utc::now(),
+            end_date: Utc::now(),
+            logs: vec![],
+        }
+    }
+}
+
+#[derive(Default, Serialize)]
+pub struct ExecutionContext {
+    pub branch: String,
+    pub commit: Commit,
+}
+
+#[derive(Serialize)]
+pub struct ExecutionResult {
+    pub job_results: Vec<JobResult>,
+    pub context: ExecutionContext,
+    pub start_date: DateTime<Utc>,
+    pub end_date: DateTime<Utc>,
+}
+
+impl Default for ExecutionResult {
+    fn default() -> Self {
+        Self {
+            job_results: vec![],
+            context: Default::default(),
+            start_date: Utc::now(),
+            end_date: Utc::now(),
+        }
+    }
+}
+
+#[allow(clippy::explicit_counter_loop)]
 fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
     let mut e = ExecutionResult::default();
     for job in &conf.pipeline {
@@ -95,9 +139,11 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
         let mut logs: Vec<String> = Vec::new();
         let mut result = JobResult {
             success: true,
+            start_date: Utc::now(),
+            name: String::from(&job.name),
             ..Default::default()
         };
-        let image = match get_job_image_or_default(&job, &conf) {
+        let image = match get_job_image_or_default(job, &conf) {
             Ok(i) => i,
             Err(e) => {
                 error!("Could not find image definition anywhere!: {}", e);
@@ -112,11 +158,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
 
         let mut volumes = Vec::new();
         if let Some(vols) = job.volumes.as_ref() {
-            volumes.extend(
-                vols.iter()
-                    .map(|s| String::from(s))
-                    .collect::<Vec<String>>(),
-            );
+            volumes.extend(vols.iter().map(String::from).collect::<Vec<String>>());
         }
         // first, create the container
         let cname = job.generate_container_name();
@@ -146,10 +188,11 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
             let step_counter_as_str = step_counter.to_string();
             let s_name = step.name.as_ref().unwrap_or(&step_counter_as_str);
             info!(" Running step \"{}\"", s_name);
+            result.logs.push(format!("--- Step {} ---", s_name));
             for e in &step.exec {
                 info!("  - {}", e);
                 let output = run_in_container(&cname, e)?;
-                if output.stdout.len() > 0 {
+                if !output.stdout.is_empty() {
                     let s = String::from_utf8_lossy(&output.stdout);
                     let _ = &s
                         .lines()
@@ -157,7 +200,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
                         .collect::<Vec<_>>();
                     result.logs.push(s.to_string());
                 }
-                if output.stderr.len() > 0 {
+                if !output.stderr.is_empty() {
                     let s = String::from_utf8_lossy(&output.stderr);
                     let _ = &s
                         .lines()
@@ -177,15 +220,17 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
                     result.success = false;
                     break;
                 }
-                step_counter = step_counter + 1;
+                step_counter += 1;
             }
             if !result.success {
                 break;
             }
         }
+        result.end_date = Utc::now();
         e.job_results.push(result);
         docker_remove_container(&cname)?;
     }
+    e.end_date = Utc::now();
     Ok(e)
 }
 
@@ -210,7 +255,8 @@ pub fn launch(repo_url: &str, branch: &str) -> Result<ExecutionResult> {
     let old_path = env::current_dir()?;
     env::set_current_dir(root.path())?;
     let mut r = execute_from_file(Path::new(".fakeci.yml"))?;
-    r.branch = branch.to_string();
+    r.context.branch = branch.to_string();
+    r.context.commit = get_commit("HEAD")?;
     env::set_current_dir(old_path)?;
     Ok(r)
 }

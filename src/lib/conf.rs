@@ -1,25 +1,26 @@
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{create_dir_all, File};
 use std::io::{Read, Write};
 
 use anyhow::Result;
 use glob;
-use log::{error, trace, warn};
+use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize};
 
+use crate::notifs::Notifier;
 use crate::utils::cache_dir;
 use crate::utils::docker::{rng_docker_chars, DOCKER_NAME_CHARSET};
 use crate::utils::git::fetch;
 
 #[cfg(test)]
 mod tests {
-    use crate::conf::Image;
-    use crate::utils::tests::{deserialize, get_sample_resource_file};
+    use crate::conf::{FakeCIBinaryConfig, Image};
+    use crate::utils::tests::{deser_yaml, get_sample_resource_file};
 
     #[test]
     fn basic_config() {
         let s = get_sample_resource_file("basic_config.yml").expect("could not find basic_config");
-        let c = deserialize(&s).expect("could not deserialize basic config");
+        let c = deser_yaml(&s).expect("could not deserialize basic config");
         assert_eq!(c.pipeline.len(), 2);
         let j0 = c.pipeline.get(0).unwrap();
         assert_eq!(j0.name, "job 0");
@@ -31,7 +32,7 @@ mod tests {
 
     #[test]
     fn docker_build() {
-        let c = deserialize(
+        let c = deser_yaml(
             &get_sample_resource_file("docker_build.yml").expect("could not find docker_build"),
         )
         .expect("could not parse docker_build");
@@ -51,6 +52,24 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn notifier_config() {
+        let c = get_sample_resource_file("notifiers.yml").expect("not found");
+        let conf: FakeCIBinaryConfig = serde_yaml::from_str(&c).expect("Could not parse yaml");
+        assert_eq!(conf.repositories.len(), 1);
+        let _: () = conf
+            .repositories
+            .iter()
+            .map(|repo| {
+                if let Some(notifiers) = &repo.notifiers {
+                    assert_eq!(notifiers.len(), 1);
+                } else {
+                    panic!("notifiers was None");
+                }
+            })
+            .collect();
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -61,7 +80,6 @@ pub struct FakeCIDefaultConfig {
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct FakeCIRepoConfig {
     pub pipeline: Vec<FakeCIJob>,
-    pub artefacts: Option<Vec<String>>,
     pub default: Option<FakeCIDefaultConfig>,
 }
 
@@ -152,22 +170,12 @@ pub struct FakeCIBinaryRepositoryConfig {
     pub name: String,
     pub uri: String,
     pub branches: BranchesSpec,
+    pub notifiers: Option<Vec<Notifier>>,
     #[serde(skip, default)]
     pub refs: HashMap<String, String>,
     #[serde(skip, default)]
     pub br_regexps: Vec<glob::Pattern>,
 }
-
-// impl Default for FakeCIBinaryRepositoryConfig {
-//     fn default() -> Self {
-//         Self {
-//             name: "".to_string(),
-//             uri: "".to_string(),
-//             branches: BranchesSpec::Single("".to_string()),
-//             refs: Default::default(),
-//         }
-//     }
-// }
 
 impl FakeCIBinaryRepositoryConfig {
     // horribly inefficient function.
@@ -191,10 +199,8 @@ impl FakeCIBinaryRepositoryConfig {
         );
         diff.extend(added.iter().map(|(k, v)| (k.to_string(), v.to_string())));
         for (k, v) in self.refs.iter() {
-            if r.contains_key(k) {
-                if r.get(k).unwrap() != self.refs.get(k).unwrap() {
-                    diff.insert(k.to_string(), v.to_string());
-                }
+            if r.contains_key(k) && r.get(k).unwrap() != self.refs.get(k).unwrap() {
+                diff.insert(k.to_string(), v.to_string());
             }
         }
         self.refs.extend(added);
@@ -205,13 +211,15 @@ impl FakeCIBinaryRepositoryConfig {
         let v = match &self.branches {
             BranchesSpec::Single(s) => {
                 trace!("Compiling branch pattern {}", s);
-                vec![glob::Pattern::new(&s).expect(&format!("could not compile regex {}", s))]
+                vec![glob::Pattern::new(s)
+                    .unwrap_or_else(|_| panic!("could not compile regex {}", s))]
             }
             BranchesSpec::Multiple(v) => v
                 .iter()
                 .map(|s| {
                     trace!("Compiling branch pattern {}", s);
-                    glob::Pattern::new(s).expect(&format!("could not compile regex {}", s))
+                    glob::Pattern::new(s)
+                        .unwrap_or_else(|_| panic!("could not compile regex {}", s))
                 })
                 .collect(),
         };
@@ -243,11 +251,15 @@ impl FakeCIBinaryRepositoryConfig {
     }
 
     pub fn persist(&self) -> Result<()> {
+        trace!("persist()");
         // find cache dir
         let cache = cache_dir();
+        trace!("cache: {}", cache.display());
+        create_dir_all(&cache)?;
         let mut f = File::create(cache.join(format!("{}.yml", self.name)))?;
         // write to cache dir
         let _ = f.write_all(serde_yaml::to_string(&self.refs)?.as_ref());
+        debug!("Finished persisting branch values to disk");
         Ok(())
     }
 }
@@ -256,15 +268,17 @@ impl FakeCIBinaryRepositoryConfig {
 /// Config for the binary
 /// ```
 /// use fakeci::conf::FakeCIBinaryConfig;
-/// let s: &str = "[[repository]]\nname = \"test\"\nuri = \"http://fake.uri/\"\nbranches = [\"*\"]";
-/// let c: FakeCIBinaryConfig = toml::from_str(s).expect("invalid toml");
+/// let s: &str = "repositories:
+///   - name: blabla
+///     uri: https://github.com/paulollivier/fake-ci
+///     branches: \"*\"";
+/// let c: FakeCIBinaryConfig = serde_yaml::from_str(s).expect("invalid yaml");
 /// assert_eq!(c.watch_interval, 300);
 /// assert_eq!(c.repositories.len(), 1);
 /// ```
 pub struct FakeCIBinaryConfig {
     #[serde(default = "watch_interval_default")]
     pub watch_interval: u32,
-    #[serde(alias = "repository")]
     pub repositories: Vec<FakeCIBinaryRepositoryConfig>,
 }
 
