@@ -87,7 +87,7 @@ pub struct FakeCIRepoConfig {
 pub struct FakeCIDockerBuild {
     pub dockerfile: Option<String>,
     pub context: Option<String>,
-    pub build_args: Option<String>,
+    pub build_args: Option<Vec<String>>,
     pub name: Option<String>,
     #[serde(default)]
     pub privileged: bool,

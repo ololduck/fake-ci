@@ -4,6 +4,8 @@ default:
 
 pipeline:
   - name: check, test & release
+    env:
+      RUST_LOG: trace
     steps:
       - name: check
         exec:
