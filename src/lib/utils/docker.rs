@@ -12,16 +12,18 @@ use crate::utils::trim_newline;
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::env::current_dir;
     use std::fs::{remove_file, File};
     use std::io::Write;
 
-    use pretty_assertions::assert_eq;
+    use pretty_assertions::{assert_eq, assert_ne};
     use tempdir::TempDir;
 
-    use crate::build_image;
     use crate::conf::FakeCIDockerBuild;
-    use crate::utils::docker::docker_remove_image;
+    use crate::utils::docker::{docker_remove_image, rng_docker_chars};
     use crate::utils::tests::with_dir;
+    use crate::{build_image, docker_remove_container, run_from_image, run_in_container};
 
     #[test]
     fn docker_build() {
@@ -41,6 +43,28 @@ mod tests {
             assert_eq!(image, "fakeci-build-image-test");
             let _ = docker_remove_image(&image);
             let _ = remove_file("Dockerfile");
+        });
+    }
+
+    #[test]
+    fn run_with_env() {
+        pretty_env_logger::init();
+        let tmp_dir = TempDir::new("dbuild").expect("could not create temp dir");
+        with_dir(tmp_dir.path(), || {
+            println!("current_dir: {}", current_dir().unwrap().display());
+            let mut env = HashMap::new();
+            env.insert("TEST_VAL".to_string(), "duck".to_string());
+            let cname = format!("fake-ci-tests-{}", rng_docker_chars(4));
+            let o = run_from_image("busybox", &cname, "sh", &vec![], &env, false, false);
+            assert!(o.is_ok());
+            let o = run_in_container(&cname, "echo val=$TEST_VAL");
+            assert!(o.is_ok());
+            let o = o.unwrap();
+            assert!(o.status.success());
+            let s = String::from_utf8_lossy(&o.stdout).to_string();
+            let _ = docker_remove_container(&cname);
+            assert_ne!(s, "val=\n");
+            assert_eq!(s, "val=duck\n");
         });
     }
 }
@@ -139,7 +163,7 @@ pub fn docker_remove_container(container: &str) -> Result<()> {
 }
 
 /// Runs the given command in the given container, then returns the output.
-/// ```
+/// ```rust,no_run
 /// # use std::collections::HashMap;
 /// use fakeci::utils::docker::{docker_remove_container, run_from_image, run_in_container};
 /// let image = "ubuntu";
@@ -170,7 +194,7 @@ pub fn run_in_container(container: &str, command: &str) -> Result<Output> {
 }
 
 /// Runs the given `command` in a container created from `image`.
-/// ```rust
+/// ```rust,no_run
 /// # use std::collections::HashMap;
 /// # use std::process::Output;
 /// # use fakeci::utils::docker::run_from_image;
@@ -205,6 +229,13 @@ pub fn run_from_image(
     // yeah, we can't have a &String if the object is freed...
     let s_run = String::from("run");
     let cname = format!("--name={}", container_name);
+    let env_args = env
+        .into_iter()
+        .flat_map(|(k, v)| {
+            let v = vec!["-e".to_string(), format!("{}={}", k, v)];
+            v.into_iter()
+        })
+        .collect::<Vec<String>>();
     let args = {
         let mut args: Vec<&str> = vec![&s_run, "-i"];
         if one_time {
@@ -216,6 +247,7 @@ pub fn run_from_image(
         args.push(&cname);
         args.push("--workdir=/code");
         args.extend(vols.iter().map(|v| v.as_str()));
+        args.extend(env_args.iter().map(|s| s.as_str()));
         args.push("--pull=always");
         args.push(image);
         args.extend(command.split_whitespace());
