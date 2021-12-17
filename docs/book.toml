@@ -1,0 +1,7 @@
+[book]
+authors = ["Paul Ollivier"]
+language = "en"
+multilingual = false
+src = "src"
+title = "FakeCI User Documentation"
+

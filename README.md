@@ -1,12 +1,12 @@
 # FakeCI
 
 I decided to create this on a windy and rainy Sunday, while looking at the available Free & Open-Source CI & CD
-softwares. I noticed there wasn't any written in rust, and I thought it would be a cool project to pass the time and
+software programs. I noticed there wasn't any written in rust, and I thought it would be a cool project to pass the time and
 hopefully one day have a cool solution.
 
 This is really the very beginning of this project, there's no http interface, … no nothing, in fact :D
 
-The only redeeming feature is it's ability to build & test itself, for now. That's why it's called FakeCI.
+The only redeeming feature is its ability to build & test itself, for now. That's why it's called FakeCI.
 
 ```log
  INFO  fakeci > Running job "hello world"
