@@ -1,4 +1,4 @@
-# Build Results for pipeline {{context.branch}} at {{start_date}} : {{ build_status job_results }}
+# Build Results for {{context.repo_name}}#{{context.branch}} at {{start_date}} : {{ build_status job_results }}
 
 {{#each job_results }}
     ## {{this.name}} ({{duration this.start_date this.end_date}}s)

@@ -62,7 +62,9 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
                 })
             }) {
                 info!("Detected change in {}#{}!", repo.name, branch);
-                let res = launch(&repo.uri, branch)?;
+                let mut res = launch(&repo.uri, branch)?;
+                res.context.repo_name = String::from(&repo.name);
+                res.context.repo_url = String::from(&repo.uri);
                 if let Some(notifiers) = &repo.notifiers {
                     for notifier in notifiers {
                         notifier.send(&res)?;
