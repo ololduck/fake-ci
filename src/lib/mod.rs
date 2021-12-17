@@ -108,6 +108,8 @@ impl Default for JobResult {
 
 #[derive(Default, Serialize)]
 pub struct ExecutionContext {
+    pub repo_name: String,
+    pub repo_url: String,
     pub branch: String,
     pub commit: Commit,
 }

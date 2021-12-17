@@ -39,6 +39,8 @@ mod tests {
                 ..Default::default()
             }],
             context: ExecutionContext {
+                repo_name: "fake-ci/internal-tests".to_string(),
+                repo_url: "git@tests:fake-ci/internal-tests".to_string(),
                 branch: "main".to_string(),
                 commit: Commit {
                     author: CommitPerson {
@@ -82,6 +84,8 @@ mod tests {
                 },
             ],
             context: ExecutionContext {
+                repo_name: "fake-ci/internal-tests".to_string(),
+                repo_url: "git@tests:fake-ci/internal-tests".to_string(),
                 branch: "main".to_string(),
                 commit: Default::default(),
             },

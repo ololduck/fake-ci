@@ -18,7 +18,7 @@
     <title>Build results for {{context.branch}}</title>
 </head>
 <body>
-<h1>Build results for pipeline {{context.branch}} at {{start_date}}: {{build_status job_results}}</h1>
+<h1>Build results for {{context.repo_name}}#{{context.branch}} at {{start_date}}: {{build_status job_results}}</h1>
 {{#each job_results}}
     <h2>{{this.name}} ({{duration this.start_date this.end_date}}s)</h2>
     <p>Execution logs:</p>
