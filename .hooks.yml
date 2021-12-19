@@ -1,7 +1,9 @@
 repos:
   - url: https://github.com/paulollivier/rust-hooks
+  - url: https://github.com/paulollivier/git-utils-hooks
 hooks:
   - name: cargo fmt
   - name: cargo test
   - name: clippy
   - name: version_match
+  - name: conventional commits
