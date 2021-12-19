@@ -23,5 +23,6 @@ pipeline:
         exec:
           - docker build -t paulollivier/fake-ci:latest .
       - name: publish
+        exec:
           - echo -n "$DOCKER_HUB_PASSWORD" | docker login -u paulollivier --password-stdin
           - docker push paulollivier/fake-ci:latest
