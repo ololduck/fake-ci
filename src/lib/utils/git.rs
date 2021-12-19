@@ -12,8 +12,9 @@ use regex::Regex;
 use serde::Serialize;
 
 lazy_static! {
-    static ref REF_PATTERN: Regex = Regex::new(r"([0-9a-fA-F]+)[ \t]+refs/heads/([a-z/\-_]+)")
-        .expect("could not compile pattern");
+    static ref REF_PATTERN: Regex =
+        Regex::new(r"([0-9a-fA-Z]+)[ \t]+refs/heads/([0-9a-zA-Z/\-_]+)")
+            .expect("could not compile pattern");
     static ref COMMIT_PERSON_PATTERN: Regex =
         Regex::new(r"([A-Za-z\-_ ]+) <([a-z0-9_\-\.\+]+@[a-z0-9\.\-_]+)> ([0-9]+ (\+|\-)[0-9]{4})")
             .expect("could not compile pattern");
