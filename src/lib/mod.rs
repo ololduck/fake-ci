@@ -16,7 +16,7 @@ use crate::utils::get_job_image_or_default;
 use crate::utils::git::{get_commit, git_clone_with_branch_and_path, Commit};
 
 pub mod conf;
-pub mod notifs;
+pub mod notifications;
 pub mod utils;
 
 #[cfg(test)]

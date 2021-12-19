@@ -9,7 +9,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::notifs::Notify;
+use crate::notifications::Notify;
 use crate::{ExecutionResult, JobResult};
 
 #[cfg(test)]
@@ -20,8 +20,8 @@ mod tests {
     use pretty_env_logger::try_init;
     use serde_json::json;
 
-    use crate::notifs::mail::{render_text, Mailer};
-    use crate::notifs::Notify;
+    use crate::notifications::mail::{render_text, Mailer};
+    use crate::notifications::Notify;
     use crate::utils::git::CommitPerson;
     use crate::utils::tests::get_sample_resource_file;
     use crate::{Commit, ExecutionContext, ExecutionResult, JobResult};
@@ -55,7 +55,7 @@ mod tests {
             end_date: Utc::now(),
         };
 
-        let s = get_sample_resource_file("notifs/simple_smtp.yml")
+        let s = get_sample_resource_file("notifications/simple_smtp.yml")
             .expect("could not read simple_smtp.yml");
 
         let mailer: Mailer = serde_yaml::from_str(&s).expect("could not build mailer");

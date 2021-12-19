@@ -48,7 +48,7 @@ mod tests {
 
     #[test]
     fn run_with_env() {
-        pretty_env_logger::init();
+        let _ = pretty_env_logger::try_init();
         let tmp_dir = TempDir::new("dbuild").expect("could not create temp dir");
         with_dir(tmp_dir.path(), || {
             println!("current_dir: {}", current_dir().unwrap().display());
