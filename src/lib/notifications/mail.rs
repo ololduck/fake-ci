@@ -175,13 +175,13 @@ fn to_addr(s: &str) -> anyhow::Result<EmailAddress> {
     if let Some(matches) = matches {
         let c1 = matches.get(1);
         let c2 = matches.get(2);
-        if c1.is_some() && c2.is_some() {
+        if let (Some(c1), Some(c2)) = (c1, c2) {
             return Ok(EmailAddress::Complete(
-                c2.unwrap().as_str().to_string(),
-                c1.unwrap().as_str().to_string(),
+                c2.as_str().to_string(),
+                c1.as_str().to_string(),
             ));
-        } else if c2.is_some() {
-            return Ok(EmailAddress::Single(c2.unwrap().as_str().to_string()));
+        } else if let Some(c2) = c2 {
+            return Ok(EmailAddress::Single(c2.as_str().to_string()));
         }
     }
     Err(anyhow!(

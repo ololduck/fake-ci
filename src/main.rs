@@ -11,10 +11,10 @@ use clap::{App, Arg, SubCommand};
 use log::{debug, error, info, trace, warn, LevelFilter};
 use serde::{Deserialize, Serialize};
 
-use fakeci::launch;
 use fakeci::notifications::Notifier;
 use fakeci::utils::cache_dir;
 use fakeci::utils::git::fetch;
+use fakeci::{launch, Env, LaunchOptions};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -42,11 +42,7 @@ mod tests {
             .repositories
             .iter()
             .map(|repo| {
-                if let Some(notifiers) = &repo.notifiers {
-                    assert_eq!(notifiers.len(), 1);
-                } else {
-                    panic!("notifiers was None");
-                }
+                assert_eq!(repo.notifiers.len(), 1);
             })
             .collect();
     }
@@ -58,13 +54,23 @@ pub enum BranchesSpec {
     Single(String),
     Multiple(Vec<String>),
 }
+impl Default for BranchesSpec {
+    fn default() -> Self {
+        BranchesSpec::Single("*".to_string())
+    }
+}
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct FakeCIBinaryRepositoryConfig {
     pub name: String,
     pub uri: String,
     pub branches: BranchesSpec,
-    pub notifiers: Option<Vec<Notifier>>,
+    #[serde(default)]
+    pub notifiers: Vec<Notifier>,
+    #[serde(default)]
+    pub secrets: Env,
+    #[serde(default)]
+    pub environment: Env,
     #[serde(skip, default)]
     pub refs: HashMap<String, String>,
     #[serde(skip, default)]
@@ -229,13 +235,17 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
                 })
             }) {
                 info!("Detected change in {}#{}!", repo.name, branch);
-                let mut res = launch(&repo.uri, branch)?;
+                let mut res = launch(LaunchOptions {
+                    repo_name: repo.name.to_string(),
+                    repo_url: repo.uri.to_string(),
+                    branch: branch.to_string(),
+                    secrets: repo.secrets.clone(),
+                    environment: repo.environment.clone(),
+                })?;
                 res.context.repo_name = String::from(&repo.name);
                 res.context.repo_url = String::from(&repo.uri);
-                if let Some(notifiers) = &repo.notifiers {
-                    for notifier in notifiers {
-                        notifier.send(&res)?;
-                    }
+                for notifier in &repo.notifiers {
+                    notifier.send(&res)?;
                 }
             }
             trace!("finished execution, persisting branch values…");

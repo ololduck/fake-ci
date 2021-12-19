@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use crate::Env;
 use serde::{Deserialize, Serialize};
 
 use crate::utils::docker::{rng_docker_chars, DOCKER_NAME_CHARSET};
@@ -8,6 +7,7 @@ use crate::utils::docker::{rng_docker_chars, DOCKER_NAME_CHARSET};
 mod tests {
     use crate::conf::Image;
     use crate::utils::tests::{deser_yaml, get_sample_resource_file};
+    use crate::Env;
 
     #[test]
     fn basic_config() {
@@ -16,8 +16,8 @@ mod tests {
         assert_eq!(c.pipeline.len(), 2);
         let j0 = c.pipeline.get(0).unwrap();
         assert_eq!(j0.name, "job 0");
-        assert_eq!(j0.volumes, None);
-        assert_eq!(j0.env, None);
+        assert_eq!(j0.volumes.len(), 0);
+        assert_eq!(j0.env, Env::new());
         assert_eq!(j0.image, Some(Image::Existing("ubuntu".to_string())));
         assert_eq!(j0.steps.len(), 2);
     }
@@ -49,6 +49,8 @@ mod tests {
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct FakeCIDefaultConfig {
     pub image: Option<Image>,
+    #[serde(default)]
+    pub env: Env,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -87,8 +89,10 @@ pub struct FakeCIJob {
     pub name: String,
     pub image: Option<Image>,
     pub steps: Vec<FakeCIStep>,
-    pub env: Option<HashMap<String, String>>,
-    pub volumes: Option<Vec<String>>,
+    #[serde(default)]
+    pub env: Env,
+    #[serde(default)]
+    pub volumes: Vec<String>,
 }
 
 impl FakeCIJob {
