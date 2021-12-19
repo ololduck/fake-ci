@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::path::Path;
@@ -15,19 +16,23 @@ use crate::utils::docker::{
 use crate::utils::get_job_image_or_default;
 use crate::utils::git::{get_commit, git_clone_with_branch_and_path, Commit};
 
+/// All that is configuration-related. Structs related to file deserialization.
 pub mod conf;
-pub mod notifs;
+/// All outbound communications with the outside world
+pub mod notifications;
+/// Some utility functions, such as git or docker runs
 pub mod utils;
 
 #[cfg(test)]
 mod tests {
-    use std::fs::remove_file;
+    use std::fs::{remove_file, File};
+    use std::io::Read;
     use std::path::PathBuf;
 
     use pretty_assertions::assert_eq;
 
     use crate::utils::tests::{deser_yaml, get_sample_resource_file, with_dir};
-    use crate::{execute_config, launch};
+    use crate::{execute_config, Env, FakeCIRepoConfig, LaunchOptions};
 
     #[test]
     fn hello_world() {
@@ -41,8 +46,17 @@ mod tests {
           - \"touch hello_world\"";
         let config = serde_yaml::from_str(conf).unwrap();
         let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
         with_dir(&p, || {
-            assert!(execute_config(config).is_ok());
+            assert!(execute_config(
+                config,
+                &LaunchOptions {
+                    repo_name: "fake-ci tests".to_string(),
+                    repo_url: ".".to_string(),
+                    ..Default::default()
+                }
+            )
+            .is_ok());
             let hello = p.join("hello_world");
             assert!(hello.is_file());
             remove_file(hello).expect("Could not remove file in test_hello_world");
@@ -55,7 +69,14 @@ mod tests {
         let conf = deser_yaml(&get_sample_resource_file("job_container_reuse.yml")?)?;
         let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         with_dir(&p, || {
-            let result = execute_config(conf);
+            let result = execute_config(
+                conf,
+                &LaunchOptions {
+                    repo_name: "fake-ci tests".to_string(),
+                    repo_url: ".".to_string(),
+                    ..Default::default()
+                },
+            );
             assert!(result.is_ok());
             let result = result.unwrap();
             for j in result.job_results {
@@ -65,26 +86,52 @@ mod tests {
         });
         Ok(())
     }
-
     #[test]
-    #[ignore]
-    fn dog_feeding() {
+    fn secrets() {
         let _ = pretty_env_logger::try_init();
-        let r = launch(".", "main");
-        assert!(r.is_ok());
-        let r = r.unwrap();
-        for job_result in r.job_results {
-            assert_eq!(job_result.success, true);
-        }
+        let c = get_sample_resource_file("secrets.yml").expect("not found");
+        let conf: FakeCIRepoConfig = serde_yaml::from_str(&c).expect("Could not parse yaml");
+        let opts = LaunchOptions {
+            repo_name: "fake-ci tests".to_string(),
+            secrets: {
+                let mut s = Env::new();
+                s.insert("MY_SECRET".to_string(), "shh!".to_string());
+                s
+            },
+            ..Default::default()
+        };
+        let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        with_dir(&p, || {
+            let res = execute_config(conf, &opts);
+            assert!(res.is_ok());
+            let res = res.unwrap();
+            assert_eq!(res.job_results.len(), 1);
+            let j0 = res.job_results.get(0).unwrap();
+            assert_eq!(
+                j0.logs.contains(opts.secrets.get("MY_SECRET").unwrap()),
+                false
+            );
+            let mut f = File::open("secrets.txt").unwrap();
+            let mut s = String::new();
+            let _ = f.read_to_string(&mut s);
+            let _ = remove_file("secrets.txt");
+            assert_eq!(&s, opts.secrets.get("MY_SECRET").unwrap());
+        });
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
+/// The result of a single job.
 pub struct JobResult {
+    /// If all the steps returned 0.
     pub success: bool,
+    /// Name of the job.
     pub name: String,
+    /// When this job started.
     pub start_date: DateTime<Utc>,
+    /// When this job ended.
     pub end_date: DateTime<Utc>,
+    /// An array of strings, each a line of the steps' `stdout`
     pub logs: Vec<String>,
 }
 
@@ -106,19 +153,29 @@ impl Default for JobResult {
     }
 }
 
-#[derive(Default, Serialize)]
+#[derive(Default, Serialize, Debug)]
+/// The context in which the job executed
 pub struct ExecutionContext {
+    /// an arbitrary name, copied from `LaunchOptions`
     pub repo_name: String,
+    /// the repository URL
     pub repo_url: String,
+    /// the "branch" (read: git ref) used to run.
     pub branch: String,
+    /// Some details regarding the commit designed by the branch.
     pub commit: Commit,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
+/// The result of executing all the jobs defined in the repository, with some context added.
 pub struct ExecutionResult {
+    /// An array of `JobResult`
     pub job_results: Vec<JobResult>,
+    /// The context in which the job has executed
     pub context: ExecutionContext,
+    /// When the job started
     pub start_date: DateTime<Utc>,
+    /// When the job ended
     pub end_date: DateTime<Utc>,
 }
 
@@ -134,8 +191,18 @@ impl Default for ExecutionResult {
 }
 
 #[allow(clippy::explicit_counter_loop)]
-fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
-    let mut e = ExecutionResult::default();
+fn execute_config(conf: FakeCIRepoConfig, opts: &LaunchOptions) -> Result<ExecutionResult> {
+    let mut e = ExecutionResult {
+        job_results: vec![],
+        context: ExecutionContext {
+            repo_name: opts.repo_name.to_string(),
+            repo_url: opts.repo_url.to_string(),
+            branch: opts.branch.to_string(),
+            commit: get_commit("HEAD")?,
+        },
+        start_date: Utc::now(),
+        ..Default::default()
+    };
     for job in &conf.pipeline {
         info!("Running job \"{}\"", job.name);
         let mut logs: Vec<String> = Vec::new();
@@ -158,18 +225,28 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
             Image::ExistingFull(e) => e.name.clone(),
         };
 
-        let mut volumes = Vec::new();
-        if let Some(vols) = job.volumes.as_ref() {
-            volumes.extend(vols.iter().map(String::from).collect::<Vec<String>>());
-        }
+        let volumes = job
+            .volumes
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
         // first, create the container
         let cname = job.generate_container_name();
+        // Create the env
+        let mut env = Env::new();
+        if let Some(default_conf) = &conf.default {
+            env.extend(default_conf.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+        }
+        env.extend(job.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+        env.extend(opts.environment.iter().map(|(k, v)| (k.clone(), v.clone())));
+        env.extend(opts.secrets.iter().map(|(k, v)| (k.clone(), v.clone())));
+        // Then, run the stuff
         let output = run_from_image(
             &image_str,
             &cname,
             "sh",
             &volumes,
-            &job.env.clone().unwrap_or_default(),
+            &env,
             false,
             image.is_privileged(),
         )?;
@@ -236,7 +313,7 @@ fn execute_config(conf: FakeCIRepoConfig) -> Result<ExecutionResult> {
     Ok(e)
 }
 
-fn execute_from_file(path: &Path) -> Result<ExecutionResult> {
+fn execute_from_file(path: &Path, opts: &LaunchOptions) -> Result<ExecutionResult> {
     debug!("Execute from file {}", path.display());
     let c = match serde_yaml::from_reader(File::open(path)?) {
         Ok(c) => c,
@@ -245,20 +322,36 @@ fn execute_from_file(path: &Path) -> Result<ExecutionResult> {
             panic!();
         }
     };
-    let r = execute_config(c)?;
+    let r = execute_config(c, opts)?;
     Ok(r)
 }
+pub type Env = HashMap<String, String>;
 
-pub fn launch(repo_url: &str, branch: &str) -> Result<ExecutionResult> {
-    debug!("launch called with repo {}", repo_url);
+#[derive(Default)]
+/// Represents a test launch configuration. This is passed by the caller, probably an interface to the outside world
+pub struct LaunchOptions {
+    /// A name. Will be used in notifiers.
+    pub repo_name: String,
+    /// URL of the repository
+    pub repo_url: String,
+    /// branch to checkout
+    pub branch: String,
+    /// A HashMap of _secrets_, stuff that shouldn't be committed.
+    pub secrets: Env,
+    /// A HashMap of env values. Will be added to this launch's envvars
+    pub environment: Env,
+}
+
+/// Launches the CI job for the repository
+pub fn launch(opts: LaunchOptions) -> Result<ExecutionResult> {
+    debug!("launch called with repo {}", opts.repo_url);
     let root = TempDir::new("fakeci_execution")?;
     debug!("running in dir {}", root.path().display());
-    git_clone_with_branch_and_path(repo_url, branch, root.path())?;
+    git_clone_with_branch_and_path(&opts.repo_url, &opts.branch, root.path())?;
     let old_path = env::current_dir()?;
     env::set_current_dir(root.path())?;
-    let mut r = execute_from_file(Path::new(".fakeci.yml"))?;
-    r.context.branch = branch.to_string();
-    r.context.commit = get_commit("HEAD")?;
+    let p = Path::new(".fakeci.yml");
+    let r = execute_from_file(p, &opts)?;
     env::set_current_dir(old_path)?;
     Ok(r)
 }

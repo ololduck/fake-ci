@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::env::current_dir;
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
@@ -9,6 +8,7 @@ use rand::Rng;
 
 use crate::conf::FakeCIDockerBuild;
 use crate::utils::trim_newline;
+use crate::Env;
 
 #[cfg(test)]
 mod tests {
@@ -48,7 +48,7 @@ mod tests {
 
     #[test]
     fn run_with_env() {
-        pretty_env_logger::init();
+        let _ = pretty_env_logger::try_init();
         let tmp_dir = TempDir::new("dbuild").expect("could not create temp dir");
         with_dir(tmp_dir.path(), || {
             println!("current_dir: {}", current_dir().unwrap().display());
@@ -209,7 +209,7 @@ pub fn run_from_image(
     container_name: &str,
     command: &str,
     volumes: &[String],
-    env: &HashMap<String, String>,
+    env: &Env,
     one_time: bool,
     privileged: bool,
 ) -> Result<Output> {
@@ -229,6 +229,7 @@ pub fn run_from_image(
     // yeah, we can't have a &String if the object is freed...
     let s_run = String::from("run");
     let cname = format!("--name={}", container_name);
+    #[allow(clippy::into_iter_on_ref)]
     let env_args = env
         .into_iter()
         .flat_map(|(k, v)| {
