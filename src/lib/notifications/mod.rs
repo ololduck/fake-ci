@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "mails")]
-use crate::notifs::mail::Mailer;
+use crate::notifications::mail::Mailer;
 use crate::ExecutionResult;
 
 #[cfg(feature = "mails")]

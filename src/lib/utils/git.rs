@@ -163,7 +163,7 @@ impl CommitPerson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct Commit {
     pub hash: String,
     pub author: CommitPerson,
