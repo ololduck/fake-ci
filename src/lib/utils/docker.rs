@@ -168,6 +168,7 @@ pub fn docker_remove_image(image: &str) -> Result<()> {
     Ok(())
 }
 
+/// Removes an existing container
 pub fn docker_remove_container(container: &str) -> Result<()> {
     let args = &["rm", container];
     let output = docker_cmd(args, &cwd()?)?;

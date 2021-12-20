@@ -111,9 +111,13 @@ Add loop-based repository watching"
 }
 
 #[derive(Debug, Serialize)]
+/// Describes a commit's [Author](Commit::author) or [Committer](Commit::committer)
 pub struct CommitPerson {
+    /// The person's name
     pub name: String,
+    /// The person's email
     pub email: String,
+    /// Date & time of the crime
     pub date: DateTime<Utc>,
 }
 
@@ -159,18 +163,26 @@ impl Default for CommitPerson {
 
 #[cfg(feature = "mails")]
 impl CommitPerson {
+    /// Utility function to play nice with [lettre_email]
     pub fn to_addr(&self) -> (String, String) {
         (self.email.to_string(), self.name.to_string())
     }
 }
 
 #[derive(Serialize, Debug)]
+/// Represents a git commit
 pub struct Commit {
+    /// the SHA-1 hash of the commit
     pub hash: String,
+    /// Author: of the commit
     pub author: CommitPerson,
+    /// Committer of the commit
     pub committer: CommitPerson,
+    /// The commit's message
     pub message: String,
+    /// which tree item is it
     pub tree: String,
+    /// what are its parents' SHA-1
     pub parents: Vec<String>,
 }
 
@@ -241,6 +253,7 @@ pub(crate) fn parse_raw_commit(raw: &str) -> Result<Commit> {
     Ok(c)
 }
 
+/// Tries to get the latest commit designated by `reference`.
 pub fn get_commit(reference: &str) -> Result<Commit> {
     let out = Command::new("git")
         .args(&["log", "-n", "1", "--format=raw", reference])
@@ -282,6 +295,7 @@ pub fn fetch(uri: &str) -> Result<HashMap<String, String>> {
     Ok(HashMap::from_iter(i))
 }
 
+/// Clones `repo_url` to `to: &Path`, then checkouts `branch`
 pub fn git_clone_with_branch_and_path(repo_url: &str, branch: &str, to: &Path) -> Result<()> {
     let output = Command::new("git")
         .args([

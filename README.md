@@ -1,12 +1,12 @@
 # FakeCI
 
 I decided to create this on a windy and rainy Sunday, while looking at the available Free & Open-Source CI & CD
-softwares. I noticed there wasn't any written in rust, and I thought it would be a cool project to pass the time and
+software programs. I noticed there wasn't any written in rust, and I thought it would be a cool project to pass the time and
 hopefully one day have a cool solution.
 
 This is really the very beginning of this project, there's no http interface, … no nothing, in fact :D
 
-The only redeeming feature is it's ability to build & test itself, for now. That's why it's called FakeCI.
+The only redeeming feature is its ability to build & test itself, for now. That's why it's called FakeCI.
 
 ```log
  INFO  fakeci > Running job "hello world"
@@ -77,6 +77,9 @@ pipeline:
       # NOTE: a job uses a single, re-used container
       env: # optional: we can define envvars to pass to the container
           RUST_LOG: debug
+      secrets:
+          - MY_SECRET # this is actually only to tell fakeci we want to use this secret.
+            # The actual secret definition is in the inbound interface to the outside world
       # optional: a list of volumes to mount.
       # NOTE: the repository will always be mounted as /code in the container.
       volumes:
@@ -111,6 +114,8 @@ pipeline:
 For now, `git clone` this repo. Maybe then you can `cargo install --path .` it.
 
 ## Running
+
+### The Watcher :eye:
 
 We now have an event-loop-based binary! Here's its help page:
 
@@ -147,6 +152,8 @@ repositories: # list of repositories
       #   - feature/*
       #   - hotfix/*
       branches: "*" # watch all branches matching this glob expression
+      secrets:
+          MY_SECRET: shh! # will be made available to jobs requesting it
       notifiers: # notifiers control how to be notified of build results
           - type: mailer # for now, only the "mailer" type is available
     - config:
@@ -167,7 +174,7 @@ repositories: # list of repositories
 
 -   [ ] Export build logs & artifacts
 -   [ ] HTTP hooks APIs
--   [ ] Jobs execution in docker images (dir sharing amongst instances?) => Self-Cleanup
+-   [x] Jobs execution in docker images (dir sharing amongst instances?) => Self-Cleanup
 -   [ ] Artifacts upload mechanisms
 -   [ ] Async exec, run jobs in parallel
 

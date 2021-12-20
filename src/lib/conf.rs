@@ -1,3 +1,4 @@
+/// Defines what makes for a valid configuration
 use crate::Env;
 use serde::{Deserialize, Serialize};
 
@@ -47,57 +48,98 @@ mod tests {
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+/// Some default that may or may not be present
 pub struct FakeCIDefaultConfig {
+    /// An optional docker Image definition
     pub image: Option<Image>,
     #[serde(default)]
+    /// default environment. Will be extended by individual jobs' envs
     pub env: Env,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+/// Represents an entire `.fakeci.yml`
 pub struct FakeCIRepoConfig {
+    /// A list of jobs
     pub pipeline: Vec<FakeCIJob>,
+    /// Some defaults to be used if we don't want to repeat the same stuff over & over
     pub default: Option<FakeCIDefaultConfig>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+/// Represents an image we must build ourselves
 pub struct FakeCIDockerBuild {
+    /// Optional path to the dockerfile. Will use Dockerfile if not specified
     pub dockerfile: Option<String>,
+    /// Optional context. Default: .
     pub context: Option<String>,
+    /// List of build args to pass to docker build
     pub build_args: Option<Vec<String>>,
+    /// Name of the image
     pub name: Option<String>,
     #[serde(default)]
+    /// Should the image be privileged?
     pub privileged: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+/// Represents a docker image, with some options
 pub struct FakeCIDockerImage {
+    /// Name of the docker image Ex: ubuntu
     pub name: String,
     #[serde(default)]
+    /// Should the image run in privileged mode?
     pub privileged: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(untagged)]
+/// A docker image to use to run the [job](FakeCIJob)
 pub enum Image {
+    /// A simple image name. Ex: "ubuntu"
     Existing(String),
+    /// A more complex image definition, with options
     ExistingFull(FakeCIDockerImage),
+    /// Tells us we should build the image
     Build(FakeCIDockerBuild),
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+/// Represents a Job. Serializes to:
+/// ```yaml
+/// name: say hello  # a name for this job.
+/// image: rust  # an optional image definition. If None, must be specified via
+///              # [the defaults](FakeCIRepoConfig::defaults)
+/// env:
+///   GREETED: "world"
+/// secrets:
+///   - GREETER # the actual value is defined by the inbound interface with the outside world.
+///             # Specifying this only enables its use here.
+/// steps:
+///   - name: greets the greeted
+///     exec:
+///       - echo "$GREETER says: «Hello, $GREETED»"
+/// ```
 pub struct FakeCIJob {
+    /// The job's name
     pub name: String,
+    /// An optional image definition
     pub image: Option<Image>,
+    /// A list of steps to execute
     pub steps: Vec<FakeCIStep>,
     #[serde(default)]
+    /// Environment to pass to the steps
     pub env: Env,
     #[serde(default)]
+    /// Secrets to pass to the steps. Note: actual secret definition is left to inbound interfaces
     pub secrets: Vec<String>,
     #[serde(default)]
+    /// Volumes we should mount. Note: the repository is always mounted as /code
     pub volumes: Vec<String>,
 }
 
 impl FakeCIJob {
+    /// Generates a random, valid, container name according to the job's name
     pub fn generate_container_name(&self) -> String {
         let valid_bytes = self
             .name
@@ -116,12 +158,22 @@ impl FakeCIJob {
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+/// a [job](FakeCIJob) step. Serializes to the following:
+/// ```yaml
+/// name: step 1 # Optional, will have an auto-generated sequential name if absent
+/// exec: # a list of shell commands to execute. Each one will be executed in its own `docker start°
+///   - say hello
+///   - eat pie together
+/// ```
 pub struct FakeCIStep {
+    /// An arbitrary, optional, name
     pub name: Option<String>,
+    /// A list of shell commands to execute for this step
     pub exec: Vec<String>,
 }
 
 impl Image {
+    /// returns if the container should be privileged according to variants
     pub fn is_privileged(&self) -> bool {
         match self {
             Image::Existing(_) => false,
@@ -129,6 +181,7 @@ impl Image {
             Image::Build(b) => b.privileged,
         }
     }
+    /// Returns the image's name according to variants
     pub fn get_name(&self) -> Option<String> {
         match self {
             Image::Existing(s) => Some(s.clone()),

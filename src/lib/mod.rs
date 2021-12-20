@@ -1,3 +1,12 @@
+#![warn(
+    missing_docs,
+    rustdoc::broken_intra_doc_links,
+    rustdoc::missing_crate_level_docs
+)]
+
+//! This is the main module of the fakeci library.
+//! The lib handles the [execution](launch) & [configuration](conf::FakeCIRepoConfig) part,
+//! exposing a method to [launch] an execution.
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
@@ -167,6 +176,7 @@ pub struct JobResult {
 }
 
 impl JobResult {
+    /// Returns the elapsed time between the job's start & end
     pub fn duration(&self) -> Duration {
         self.end_date - self.start_date
     }
@@ -372,6 +382,7 @@ fn execute_from_file(path: &Path, opts: &LaunchOptions) -> Result<ExecutionResul
     let r = execute_config(c, opts)?;
     Ok(r)
 }
+/// An Env is an [std::collections::HashMap<String,String>]. Quicker to write this way.
 pub type Env = HashMap<String, String>;
 
 #[derive(Default)]
