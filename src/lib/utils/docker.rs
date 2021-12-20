@@ -23,7 +23,7 @@ mod tests {
     use crate::conf::FakeCIDockerBuild;
     use crate::utils::docker::{docker_remove_image, rng_docker_chars};
     use crate::utils::tests::with_dir;
-    use crate::{build_image, docker_remove_container, run_from_image, run_in_container};
+    use crate::{build_image, docker_remove_container, run_from_image, run_in_container, Env};
 
     #[test]
     fn docker_build() {
@@ -65,6 +65,21 @@ mod tests {
             let _ = docker_remove_container(&cname);
             assert_ne!(s, "val=\n");
             assert_eq!(s, "val=duck\n");
+        });
+    }
+
+    #[test]
+    fn run_with_volumes() {
+        let _ = pretty_env_logger::try_init();
+        let tmp_dir = TempDir::new("dbuild").expect("could not create temp dir");
+        with_dir(tmp_dir.path(), || {
+            println!("current_dir: {}", current_dir().unwrap().display());
+            let vols = vec!["/var/run/docker.sock:/var/run/docker.sock".to_string()];
+            let cname = format!("fake-ci-tests-{}", rng_docker_chars(4));
+            let o = run_from_image("busybox", &cname, "sh", &vols, &Env::new(), false, false);
+            assert!(o.is_ok());
+            let o = o.unwrap();
+            assert!(o.status.success());
         });
     }
 }
@@ -223,7 +238,7 @@ pub fn run_from_image(
     vols.extend(
         volumes
             .iter()
-            .map(|v| format!("-v {}", v))
+            .map(|v| format!("--volume={}", v))
             .collect::<Vec<String>>(),
     );
     // yeah, we can't have a &String if the object is freed...
