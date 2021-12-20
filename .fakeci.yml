@@ -18,6 +18,8 @@ pipeline:
           - cargo build --release
   - name: Docker
     image: docker:dind
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     steps:
       - name: build
         exec:
