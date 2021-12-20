@@ -92,6 +92,8 @@ pub struct FakeCIJob {
     #[serde(default)]
     pub env: Env,
     #[serde(default)]
+    pub secrets: Vec<String>,
+    #[serde(default)]
     pub volumes: Vec<String>,
 }
 
