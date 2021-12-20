@@ -14,17 +14,20 @@ use serde::{Deserialize, Serialize};
 use fakeci::notifications::Notifier;
 use fakeci::utils::cache_dir;
 use fakeci::utils::git::fetch;
-use fakeci::{launch, Env, LaunchOptions};
+use fakeci::{launch, Env, ExecutionContext, ExecutionResult, JobResult, LaunchOptions};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(test)]
 mod tests {
-    use crate::FakeCIBinaryConfig;
-    use anyhow::Result;
     use std::fs::File;
     use std::io::Read;
     use std::path::PathBuf;
+
+    use anyhow::Result;
+
+    use crate::FakeCIBinaryConfig;
+
     fn get_sample_resource_file(p: &str) -> Result<String> {
         let mut s = String::new();
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -235,15 +238,34 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
                 })
             }) {
                 info!("Detected change in {}#{}!", repo.name, branch);
-                let mut res = launch(LaunchOptions {
+                let res = match launch(LaunchOptions {
                     repo_name: repo.name.to_string(),
                     repo_url: repo.uri.to_string(),
                     branch: branch.to_string(),
                     secrets: repo.secrets.clone(),
                     environment: repo.environment.clone(),
-                })?;
-                res.context.repo_name = String::from(&repo.name);
-                res.context.repo_url = String::from(&repo.uri);
+                }) {
+                    Ok(mut res) => {
+                        res.context.repo_name = String::from(&repo.name);
+                        res.context.repo_url = String::from(&repo.uri);
+                        res
+                    }
+                    Err(e) => ExecutionResult {
+                        job_results: vec![JobResult {
+                            success: false,
+                            name: "setup".to_string(),
+                            logs: vec![format!("Error on setup: {}", e)],
+                            ..Default::default()
+                        }],
+                        context: ExecutionContext {
+                            repo_name: repo.name.clone(),
+                            repo_url: repo.uri.clone(),
+                            branch: branch.clone(),
+                            commit: Default::default(),
+                        },
+                        ..Default::default()
+                    },
+                };
                 for notifier in &repo.notifiers {
                     notifier.send(&res)?;
                 }
@@ -260,8 +282,8 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
 
 fn read_fakeci_config_file(config_file: &str) -> Result<FakeCIBinaryConfig> {
     let mut s = String::new();
-    let mut f =
-        File::open(config_file).expect(&format!("Could not read config file {}", config_file));
+    let mut f = File::open(config_file)
+        .unwrap_or_else(|_| panic!("Could not read config file {}", config_file));
     f.read_to_string(&mut s)?;
     Ok(serde_yaml::from_str(&s)?)
 }
