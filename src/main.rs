@@ -195,7 +195,7 @@ fn main() -> Result<()> {
         .version(VERSION)
         .author("Paul O.")
         .about("A CI system written in rust")
-        .arg(Arg::with_name("config").short("c").long("config").value_name("FILE").help("Sets a config file").takes_value(true).default_value("fake-ci.toml"))
+        .arg(Arg::with_name("config").short("c").long("config").value_name("FILE").help("Sets a config file").takes_value(true).default_value("fake-ci.yml"))
         .subcommand(SubCommand::with_name("watch").about("Runs FakeCI in pulling mode; it will watch predefined repositories and attempt to pull them"))
         .get_matches();
     let mut config = read_fakeci_config_file(matches.value_of("config").unwrap())?;
@@ -260,7 +260,8 @@ fn watch(config: &mut FakeCIBinaryConfig) -> Result<()> {
 
 fn read_fakeci_config_file(config_file: &str) -> Result<FakeCIBinaryConfig> {
     let mut s = String::new();
-    let mut f = File::open(config_file)?;
+    let mut f =
+        File::open(config_file).expect(&format!("Could not read config file {}", config_file));
     f.read_to_string(&mut s)?;
     Ok(serde_yaml::from_str(&s)?)
 }
