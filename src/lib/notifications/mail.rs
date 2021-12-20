@@ -108,7 +108,9 @@ lazy_static! {
 // TODO: handle auth (ssl brrr)
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
 #[serde(untagged)]
+/// enum of supported SMTP auth methods
 pub enum SMTPAuth {
+    /// No auth; the server accepts everything & anyone
     None,
 }
 
@@ -123,20 +125,29 @@ fn is_default<T: Default + PartialEq>(t: &T) -> bool {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
+/// Represents a SMTP server
 pub struct SMTPConfig {
+    /// Server's address
     pub(crate) addr: String,
+    /// Server's listening port
     pub(crate) port: u16,
     #[serde(default = "SMTPAuth::default", skip_serializing_if = "is_default")]
+    /// Which auth model to use
     pub(crate) auth: SMTPAuth,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
+/// Send mails via SMTP
 pub struct Mailer {
+    /// Who should the mail be from
     pub(crate) from: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Who should the recipient reply to if he needs to?
     pub(crate) reply_to: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Who are the additional recipients, the Committer being automatically added.
     pub(crate) recipients: Option<Vec<String>>,
+    /// Which SMTP config should we use
     pub(crate) server: SMTPConfig,
 }
 

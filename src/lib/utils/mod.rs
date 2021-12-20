@@ -8,7 +8,9 @@ use log::debug;
 use crate::conf::FakeCIJob;
 use crate::{FakeCIRepoConfig, Image};
 
+/// Utility functions for docker, mostly docker commands
 pub mod docker;
+/// Utility functions for git. Mostly OS interface.
 pub mod git;
 
 #[cfg(test)]
@@ -83,6 +85,7 @@ pub fn trim_newline(s: &mut String) {
     }
 }
 
+/// Returns the job's definition of image or tries to get the default one.
 pub fn get_job_image_or_default<'a>(
     job: &'a FakeCIJob,
     config: &'a FakeCIRepoConfig,
