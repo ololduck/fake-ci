@@ -3,9 +3,9 @@ use std::env;
 use std::fs::File;
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use chrono::{DateTime, Duration, Utc};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use tempdir::TempDir;
 
@@ -26,13 +26,14 @@ pub mod utils;
 #[cfg(test)]
 mod tests {
     use std::fs::{remove_file, File};
-    use std::io::Read;
+    use std::io::{Read, Write};
     use std::path::PathBuf;
 
     use pretty_assertions::assert_eq;
+    use tempdir::TempDir;
 
     use crate::utils::tests::{deser_yaml, get_sample_resource_file, with_dir};
-    use crate::{execute_config, Env, FakeCIRepoConfig, LaunchOptions};
+    use crate::{execute_config, execute_from_file, Env, FakeCIRepoConfig, LaunchOptions};
 
     #[test]
     fn hello_world() {
@@ -117,6 +118,16 @@ mod tests {
             let _ = remove_file("secrets.txt");
             assert_eq!(&s, opts.secrets.get("MY_SECRET").unwrap());
         });
+    }
+    #[test]
+    fn malformed_config() {
+        let root = TempDir::new("malformed-config").expect("could not create tmp dir");
+        let s = "malformed ymal";
+        let p = root.path().join(".fakeci.yml");
+        let mut f = File::create(&p).expect("could not create file");
+        assert!(f.write_all(s.as_ref()).is_ok());
+        let r = execute_from_file(&p, &LaunchOptions::default());
+        assert!(r.is_err());
     }
 }
 
@@ -318,8 +329,11 @@ fn execute_from_file(path: &Path, opts: &LaunchOptions) -> Result<ExecutionResul
     let c = match serde_yaml::from_reader(File::open(path)?) {
         Ok(c) => c,
         Err(e) => {
-            error!("Could not parse yaml config: {}", e);
-            panic!();
+            warn!(
+                "Could not parse yaml config for branch {} in repo {}: {}",
+                opts.branch, opts.repo_name, e
+            );
+            return Err(anyhow!(e));
         }
     };
     let r = execute_config(c, opts)?;
