@@ -1,6 +1,7 @@
 # Running
 
 ## Watcher
+
 For now, FakeCI only supports one mode: a repository watcher. It is provided in the binary, via the `watch` subcommand:
 
 ```text
@@ -21,7 +22,7 @@ OPTIONS:
 
 SUBCOMMANDS:
     help     Prints this message or the help of the given subcommand(s)
-    watch    Runs FakeCI in pulling mode; it will watch predefined repositories 
+    watch    Runs FakeCI in pulling mode; it will watch predefined repositories
              and attempt to pull them
 ```
 
@@ -38,7 +39,7 @@ pub struct FakeCIBinaryRepositoryConfig {
     pub name: String, // a human-readable name
     pub uri: String, // where we can find the git repo
     pub branches: BranchesSpec, // either a single branch or an array of branches
-    pub notifiers: Option<Vec<Notifier>>, // an optional array of Notifiers. 
+    pub notifiers: Option<Vec<Notifier>>, // an optional array of Notifiers.
                                           // You should have at least one if you don't want to
                                           // spend your days glued to the output console
 }
@@ -57,16 +58,16 @@ Here's the config file I use to dog-feed:
 ```yaml
 watch_interval: 30
 repositories:
-  - name: fakeci
-    uri: "https://github.com/paulollivier/fake-ci.git"
-    branches: "*"
-    notifiers:
-      - type: mailer
-        config:
-          from: Fake CI <fakeci@home.net>
-          server: # a maildev instance
-            addr: localhost 
-            port: 1025
+    - name: fakeci
+      uri: "https://github.com/paulollivier/fake-ci.git"
+      branches: "*"
+      notifiers:
+          - type: mailer
+            config:
+                from: Fake CI <fakeci@home.net>
+                server: # a maildev instance
+                    addr: localhost
+                    port: 1025
 ```
 
 ### Watcher gotchas
