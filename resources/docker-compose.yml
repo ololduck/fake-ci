@@ -8,6 +8,8 @@ services:
     volumes:
       - ./watch_fakeci.yml:/app/fake-ci.yml
       - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      RUST_LOG: info
     restart: unless-stopped
   watchtower:
     image: containrrr/watchtower

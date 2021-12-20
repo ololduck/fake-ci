@@ -120,6 +120,26 @@ mod tests {
         });
     }
     #[test]
+    fn undefined_secret() {
+        let _ = pretty_env_logger::try_init();
+        let c = get_sample_resource_file("secrets_undefined.yml").expect("not found");
+        let conf: FakeCIRepoConfig = serde_yaml::from_str(&c).expect("Could not parse yaml");
+        let opts = LaunchOptions {
+            repo_name: "fake-ci tests".to_string(),
+            ..Default::default()
+        };
+        let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        with_dir(&p, || {
+            let res = execute_config(conf, &opts);
+            assert!(res.is_ok());
+            let mut f = File::open("secrets.txt").unwrap();
+            let mut s = String::new();
+            let _ = f.read_to_string(&mut s);
+            let _ = remove_file("secrets.txt");
+            assert_eq!(&s, "");
+        });
+    }
+    #[test]
     fn malformed_config() {
         let root = TempDir::new("malformed-config").expect("could not create tmp dir");
         let s = "malformed ymal";
@@ -250,7 +270,20 @@ fn execute_config(conf: FakeCIRepoConfig, opts: &LaunchOptions) -> Result<Execut
         }
         env.extend(job.env.iter().map(|(k, v)| (k.clone(), v.clone())));
         env.extend(opts.environment.iter().map(|(k, v)| (k.clone(), v.clone())));
-        env.extend(opts.secrets.iter().map(|(k, v)| (k.clone(), v.clone())));
+        env.extend({
+            let mut secrets = Env::new();
+            for secret in job.secrets.iter() {
+                if let Some(v) = opts.secrets.get(secret) {
+                    secrets.insert(secret.to_string(), v.to_string());
+                } else {
+                    return Err(anyhow!(
+                        "Could not find secret {} in the executor's secrets!",
+                        secret
+                    ));
+                }
+            }
+            secrets
+        });
         // Then, run the stuff
         let output = run_from_image(
             &image_str,
