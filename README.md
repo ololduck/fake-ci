@@ -79,7 +79,7 @@ pipeline:
           RUST_LOG: debug
       secrets:
           - MY_SECRET # this is actually only to tell fakeci we want to use this secret.
-                      # The actual secret definition is in the inbound interface to the outside world
+            # The actual secret definition is in the inbound interface to the outside world
       # optional: a list of volumes to mount.
       # NOTE: the repository will always be mounted as /code in the container.
       volumes:
@@ -116,6 +116,7 @@ For now, `git clone` this repo. Maybe then you can `cargo install --path .` it.
 ## Running
 
 ### The Watcher :eye:
+
 We now have an event-loop-based binary! Here's its help page:
 
 ```
